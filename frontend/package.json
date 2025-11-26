@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@chakra-ui/alert": "^2.2.2",
     "@chakra-ui/form-control": "^2.2.0",
     "@chakra-ui/react": "^3.30.0",
     "@chakra-ui/toast": "^7.0.2",

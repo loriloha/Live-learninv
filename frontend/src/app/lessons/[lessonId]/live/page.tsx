@@ -1,23 +1,23 @@
-// src/app/lessons/[lessonId]/live/page.tsx
 "use client";
 
-import { Alert, AlertIcon } from "@chakra-ui/alert";
 import {
+  Alert,
   Avatar,
+  AvatarGroup,
   Badge,
   Box,
   Button,
   Card,
   Flex,
   Heading,
+  Input,
   Icon,
   IconProps,
-  Input,
   SimpleGrid,
   Stack,
   Text,
+  // Removed useToast as it is not available in v3
 } from "@chakra-ui/react";
-import { useToast } from "@chakra-ui/toast";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
@@ -27,6 +27,8 @@ import { apiFetch } from "../../../../lib/api-client";
 import { Lesson } from "../../../../types/lesson";
 import { VideoTile } from "../../../../components/VideoTile";
 import { useWebRTC } from "../../../../hooks/useWebRTC";
+
+// Custom Icons with proper Types
 
 const MicIcon = (props: IconProps) => (
   <Icon viewBox="0 0 24 24" {...props}>
@@ -54,13 +56,12 @@ const EndCallIcon = (props: IconProps) => (
     />
   </Icon>
 );
-
 type PanelView = "chat" | "participants";
 
 export default function LiveLessonPage() {
   const params = useParams<{ lessonId: string }>();
   const router = useRouter();
-  const toast = useToast();
+  // removed useToast
   const { user } = useProtectedRoute();
   const { token } = useAuth();
 
@@ -96,24 +97,15 @@ export default function LiveLessonPage() {
   }, [params.lessonId, token]);
 
   useEffect(() => {
-    if (
-      !lesson ||
-      !token ||
-      !user ||
-      lesson.status === "live" ||
-      user.id !== lesson.teacher.id
-    ) {
-      return;
-    }
+    if (!lesson || !token || !user || lesson.status === "live" || user.id !== lesson.teacher.id) return;
+
     apiFetch<Lesson>(`/lessons/${lesson.id}/status`, {
       method: "PATCH",
       token,
       body: JSON.stringify({ status: "live" }),
     })
       .then(setLesson)
-      .catch(() => {
-        // Non-blocking
-      });
+      .catch(() => {});
   }, [lesson, token, user]);
 
   const handleLeave = () => {
@@ -133,14 +125,11 @@ export default function LiveLessonPage() {
       setLesson(updated);
       notifySessionEnd();
       leaveSession();
-      toast({ title: "Lesson ended", status: "success" });
+      // Toast removed, relying on redirect
       router.push("/dashboard");
     } catch (err) {
-      toast({
-        title: "Unable to end session",
-        description: (err as Error).message,
-        status: "error",
-      });
+      console.error("Failed to end session:", err);
+      // Optional: Add a local error state here if you want to show it in the UI
     } finally {
       setEndingSession(false);
     }
@@ -152,7 +141,7 @@ export default function LiveLessonPage() {
   }, [lesson]);
 
   const videoTiles = useMemo(() => {
-    const tiles: JSX.Element[] = [];
+    const tiles: React.ReactNode[] = [];
 
     if (localStream && user) {
       tiles.push(
@@ -198,9 +187,7 @@ export default function LiveLessonPage() {
   if (!lesson || !user) {
     return (
       <Box textAlign="center" py={20}>
-        <Text fontSize="2xl" color="gray.500">
-          Connecting to your live room...
-        </Text>
+        <Text fontSize="2xl" color="gray.500">Connecting to your live room...</Text>
       </Box>
     );
   }
@@ -210,152 +197,100 @@ export default function LiveLessonPage() {
   const canSendMessage = Boolean(message.trim()) && !sessionEndedBy;
 
   return (
-    <Box
-      bgGradient="linear(to-b, gray.900, #1a172b)"
-      minH="100vh"
-      py={{ base: 6, md: 10 }}
-    >
+    <Box bgGradient="linear(to-b, gray.900, #1a172b)" minH="100vh" py={{ base: 6, md: 10 }}>
       <Stack maxW="8xl" mx="auto" px={{ base: 4, md: 8 }} gap={6}>
         {/* Header */}
-        <Flex
-          direction={{ base: "column", md: "row" }}
-          justify="space-between"
-          align={{ base: "flex-start", md: "center" }}
-          gap={4}
-        >
+        <Flex direction={{ base: "column", md: "row" }} justify="space-between" align="center" gap={4}>
           <Box>
-            <Heading size="lg" color="white">
-              {lesson.topic}
-            </Heading>
+            <Heading size="lg" color="white">{lesson.topic}</Heading>
             <Text color="whiteAlpha.700">{formattedSchedule}</Text>
           </Box>
-          <Stack direction="row" gap={3} align="center">
+          <Stack direction="row" gap={3}>
             <Badge colorScheme="purple" px={3} py={1} rounded="full">
               {lesson.status.toUpperCase()}
             </Badge>
-            <Badge
-              colorScheme={lesson.student ? "green" : "orange"}
-              px={3}
-              py={1}
-              rounded="full"
-            >
+            <Badge colorScheme={lesson.student ? "green" : "orange"} px={3} py={1} rounded="full">
               {lesson.student ? "Student joined" : "Waiting for student"}
             </Badge>
           </Stack>
         </Flex>
 
-        {/* Session Ended Alert */}
+        {/* Session Ended Alert - Updated structure for v3 */}
         {sessionEndedBy && (
-          <Alert status="warning" borderRadius="lg">
-            <AlertIcon />
-            {sessionEndedBy} ended this session. You can safely leave the room.
-          </Alert>
+          <Alert.Root status="warning" borderRadius="lg">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>{sessionEndedBy} ended this session</Alert.Title>
+              <Alert.Description>You can safely leave the room.</Alert.Description>
+            </Alert.Content>
+          </Alert.Root>
         )}
 
-        <Flex
-          gap={6}
-          direction={{ base: "column", xl: "row" }}
-          align="stretch"
-        >
+        <Flex gap={6} direction={{ base: "column", xl: "row" }} align="stretch">
           {/* Main Video Area */}
-          <Box
-            flex="3"
-            bg="blackAlpha.600"
-            rounded="3xl"
-            p={{ base: 4, md: 6 }}
-            boxShadow="2xl"
-            backdropFilter="blur(12px)"
-          >
+          <Box flex="3" bg="blackAlpha.600" rounded="3xl" p={6} boxShadow="2xl" backdropFilter="blur(12px)">
             <Stack gap={6}>
-              <Box>
-                <Stack gap={4} minH={{ base: "360px", md: "520px" }}>
-                  <SimpleGrid
-                    columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }}
-                    gap={4}
+              <Stack gap={4} minH="520px">
+                <SimpleGrid columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }} gap={4}>
+                  {videoTiles}
+                </SimpleGrid>
+
+                {showWaitingState && (
+                  <Box
+                    bg="blackAlpha.500"
+                    border="1px dashed"
+                    borderColor="whiteAlpha.400"
+                    rounded="2xl"
+                    p={10}
+                    textAlign="center"
+                    color="whiteAlpha.700"
                   >
-                    {videoTiles}
-                  </SimpleGrid>
+                    Waiting for {waitingFor} to connect...
+                  </Box>
+                )}
+              </Stack>
 
-                  {showWaitingState && (
-                    <Box
-                      bg="blackAlpha.500"
-                      border="1px dashed"
-                      borderColor="whiteAlpha.400"
-                      rounded="2xl"
-                      p={{ base: 6, md: 10 }}
-                      textAlign="center"
-                      color="whiteAlpha.700"
-                    >
-                      Waiting for {waitingFor} to connect...
-                    </Box>
-                  )}
-                </Stack>
-              </Box>
-
-              {/* Controls Bar */}
-              <Flex
-                justify="space-between"
-                align={{ base: "flex-start", md: "center" }}
-                gap={4}
-                flexWrap="wrap"
-              >
-                {/* Participants Avatar Group */}
+              {/* Controls */}
+              <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
                 <Stack direction="row" align="center" gap={3}>
-                  <Avatar.Group size="sm" max={4}>
-                    {participants.map((participant) => (
-                      <Avatar
-                        key={participant.id}
-                        name={participant.displayName}
-                        bg={participant.isLocal ? "purple.500" : "gray.600"}
-                        color="white"
-                      />
+                  {/* Updated AvatarGroup */}
+                  <AvatarGroup size="sm">
+                    {participants.map((p) => (
+                      <Avatar.Root key={p.id}>
+                        <Avatar.Fallback bg={p.isLocal ? "purple.500" : "gray.600"} color="white">
+                          {p.displayName[0]}
+                        </Avatar.Fallback>
+                      </Avatar.Root>
                     ))}
-                  </Avatar.Group>
-                  <Text color="whiteAlpha.800">
-                    {participants.length} in this call
-                  </Text>
+                  </AvatarGroup>
+                  <Text color="whiteAlpha.800">{participants.length} in call</Text>
                 </Stack>
 
-                {/* Action Buttons */}
                 <Stack direction={{ base: "column", sm: "row" }} gap={3}>
                   <Button
                     rounded="full"
                     bg={isMicMuted ? "red.500" : "white"}
                     color={isMicMuted ? "white" : "gray.800"}
-                    leftIcon={<MicIcon />}
                     onClick={toggleMic}
-                    _hover={{ opacity: 0.9 }}
                   >
-                    {isMicMuted ? "Unmute" : "Mute"}
+                    <MicIcon /> {isMicMuted ? "Unmute" : "Mute"}
                   </Button>
 
                   <Button
                     rounded="full"
                     bg={isCameraOff ? "red.500" : "white"}
                     color={isCameraOff ? "white" : "gray.800"}
-                    leftIcon={<CameraIcon />}
                     onClick={toggleCamera}
-                    _hover={{ opacity: 0.9 }}
                   >
-                    {isCameraOff ? "Camera on" : "Camera off"}
+                     <CameraIcon /> {isCameraOff ? "Camera on" : "Camera off"}
                   </Button>
 
-                  <Button
-                    rounded="full"
-                    variant="outline"
-                    colorScheme="whiteAlpha"
-                    onClick={() => setPanelOpen((prev) => !prev)}
-                  >
-                    {panelOpen ? "Hide chat" : "Show chat"}
+                  <Button rounded="full" variant="outline" colorScheme="whiteAlpha" onClick={() => setPanelOpen(v => !v)}>
+                    {panelOpen ? "Hide panel" : "Show panel"}
                   </Button>
 
-                  <Button
-                    rounded="full"
-                    colorScheme="red"
-                    leftIcon={<EndCallIcon />}
-                    onClick={handleLeave}
-                  >
-                    Leave
+                  <Button rounded="full" colorScheme="red" onClick={handleLeave}>
+                    <EndCallIcon /> Leave
                   </Button>
 
                   {user.id === lesson.teacher.id && (
@@ -363,7 +298,7 @@ export default function LiveLessonPage() {
                       rounded="full"
                       colorScheme="pink"
                       onClick={handleEndSession}
-                      isLoading={endingSession}
+                      loading={endingSession}
                       loadingText="Ending..."
                     >
                       End for everyone
@@ -374,60 +309,32 @@ export default function LiveLessonPage() {
             </Stack>
           </Box>
 
-          {/* Chat & Participants Panel */}
-          <Card.Root
-            flex="1"
-            maxH="80vh"
-            display={panelOpen ? "flex" : "none"}
-            flexDirection="column"
-            boxShadow="2xl"
-          >
-            <Card.Header
-              bg="purple.600"
-              color="white"
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Heading size="sm">
-                {panelView === "chat" ? "Live chat" : "Participants"}
-              </Heading>
+          {/* Chat / Participants Panel */}
+          <Card.Root flex="1" maxH="80vh" display={panelOpen ? "flex" : "none"} flexDirection="column" boxShadow="2xl">
+            <Card.Header bg="purple.600" color="white" justifyContent="space-between" alignItems="center">
+              <Heading size="sm">{panelView === "chat" ? "Live chat" : "Participants"}</Heading>
               <Stack direction="row" gap={2}>
-                <Button
-                  size="sm"
-                  variant={panelView === "chat" ? "solid" : "ghost"}
-                  onClick={() => setPanelView("chat")}
-                >
+                <Button size="sm" variant={panelView === "chat" ? "solid" : "ghost"} onClick={() => setPanelView("chat")}>
                   Chat
                 </Button>
-                <Button
-                  size="sm"
-                  variant={panelView === "participants" ? "solid" : "ghost"}
-                  onClick={() => setPanelView("participants")}
-                >
+                <Button size="sm" variant={panelView === "participants" ? "solid" : "ghost"} onClick={() => setPanelView("participants")}>
                   People
                 </Button>
               </Stack>
             </Card.Header>
 
-            <Card.Body p={0} flex="1" display="flex" flexDirection="column" bg="gray.50">
+            <Card.Body p={0} flex="1" bg="gray.50">
               {panelView === "chat" ? (
                 <>
                   <Box flex="1" overflowY="auto" p={6}>
                     <Stack gap={4}>
                       {messages.length === 0 ? (
-                        <Text color="gray.500" textAlign="center">
-                          No messages yet
-                        </Text>
+                        <Text color="gray.500" textAlign="center">No messages yet</Text>
                       ) : (
                         messages.map((msg, i) => {
                           const isSelf = msg.senderId === user.id;
                           return (
-                            <Box
-                              key={`${msg.senderId}-${i}`}
-                              alignSelf={isSelf ? "flex-end" : "flex-start"}
-                              maxW="80%"
-                            >
+                            <Box key={i} alignSelf={isSelf ? "flex-end" : "flex-start"} maxW="80%">
                               <Box
                                 bg={isSelf ? "purple.500" : "white"}
                                 color={isSelf ? "white" : "gray.800"}
@@ -443,12 +350,7 @@ export default function LiveLessonPage() {
                                 </Text>
                                 <Text fontSize="sm">{msg.message}</Text>
                               </Box>
-                              <Text
-                                fontSize="xs"
-                                color="gray.500"
-                                textAlign={isSelf ? "right" : "left"}
-                                mt={1}
-                              >
+                              <Text fontSize="xs" color="gray.500" textAlign={isSelf ? "right" : "left"} mt={1}>
                                 {dayjs(msg.sentAt).format("h:mm A")}
                               </Text>
                             </Box>
@@ -460,7 +362,7 @@ export default function LiveLessonPage() {
 
                   <Box
                     as="form"
-                    onSubmit={(e) => {
+                    onSubmit={(e: React.FormEvent) => {
                       e.preventDefault();
                       if (!canSendMessage) return;
                       sendMessage(message);
@@ -480,27 +382,18 @@ export default function LiveLessonPage() {
                       disabled={Boolean(sessionEndedBy)}
                       flex="1"
                     />
-                    <Button type="submit" colorScheme="purple" isDisabled={!canSendMessage}>
+                    <Button type="submit" colorScheme="purple" disabled={!canSendMessage}>
                       Send
                     </Button>
                   </Box>
                 </>
               ) : (
-                <Box flex="1" overflowY="auto" p={6}>
+                <Box p={6}>
                   <Stack gap={3}>
-                    {participants.map((participant) => (
-                      <Flex
-                        key={participant.id}
-                        justify="space-between"
-                        align="center"
-                        bg="white"
-                        px={4}
-                        py={3}
-                        rounded="lg"
-                        boxShadow="sm"
-                      >
-                        <Text fontWeight="semibold">{participant.displayName}</Text>
-                        {participant.isLocal && <Badge colorScheme="purple">You</Badge>}
+                    {participants.map((p) => (
+                      <Flex key={p.id} justify="space-between" align="center" bg="white" px={4} py={3} rounded="lg" boxShadow="sm">
+                        <Text fontWeight="semibold">{p.displayName}</Text>
+                        {p.isLocal && <Badge colorScheme="purple">You</Badge>}
                       </Flex>
                     ))}
                   </Stack>
