@@ -4,7 +4,6 @@
 import { Alert, AlertIcon } from "@chakra-ui/alert";
 import {
   Avatar,
-  AvatarGroup,
   Badge,
   Box,
   Button,
@@ -153,7 +152,8 @@ export default function LiveLessonPage() {
   }, [lesson]);
 
   const videoTiles = useMemo(() => {
-    const tiles = [];
+    const tiles: JSX.Element[] = [];
+
     if (localStream && user) {
       tiles.push(
         <VideoTile
@@ -181,6 +181,7 @@ export default function LiveLessonPage() {
         </Box>
       );
     }
+
     remoteStreams.forEach((peer) => {
       tiles.push(
         <VideoTile
@@ -190,6 +191,7 @@ export default function LiveLessonPage() {
         />
       );
     });
+
     return tiles;
   }, [localStream, remoteStreams, user]);
 
@@ -214,6 +216,7 @@ export default function LiveLessonPage() {
       py={{ base: 6, md: 10 }}
     >
       <Stack maxW="8xl" mx="auto" px={{ base: 4, md: 8 }} gap={6}>
+        {/* Header */}
         <Flex
           direction={{ base: "column", md: "row" }}
           justify="space-between"
@@ -241,6 +244,7 @@ export default function LiveLessonPage() {
           </Stack>
         </Flex>
 
+        {/* Session Ended Alert */}
         {sessionEndedBy && (
           <Alert status="warning" borderRadius="lg">
             <AlertIcon />
@@ -271,6 +275,7 @@ export default function LiveLessonPage() {
                   >
                     {videoTiles}
                   </SimpleGrid>
+
                   {showWaitingState && (
                     <Box
                       bg="blackAlpha.500"
@@ -287,15 +292,16 @@ export default function LiveLessonPage() {
                 </Stack>
               </Box>
 
-              {/* Controls */}
+              {/* Controls Bar */}
               <Flex
                 justify="space-between"
                 align={{ base: "flex-start", md: "center" }}
                 gap={4}
                 flexWrap="wrap"
               >
+                {/* Participants Avatar Group */}
                 <Stack direction="row" align="center" gap={3}>
-                  <AvatarGroup size="sm" max={4}>
+                  <Avatar.Group size="sm" max={4}>
                     {participants.map((participant) => (
                       <Avatar
                         key={participant.id}
@@ -304,12 +310,13 @@ export default function LiveLessonPage() {
                         color="white"
                       />
                     ))}
-                  </AvatarGroup>
+                  </Avatar.Group>
                   <Text color="whiteAlpha.800">
                     {participants.length} in this call
                   </Text>
                 </Stack>
 
+                {/* Action Buttons */}
                 <Stack direction={{ base: "column", sm: "row" }} gap={3}>
                   <Button
                     rounded="full"
@@ -367,7 +374,7 @@ export default function LiveLessonPage() {
             </Stack>
           </Box>
 
-          {/* Chat / Participants Panel */}
+          {/* Chat & Participants Panel */}
           <Card.Root
             flex="1"
             maxH="80vh"
