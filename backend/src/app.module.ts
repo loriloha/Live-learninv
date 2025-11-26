@@ -18,22 +18,25 @@ import { RealtimeModule } from './realtime/realtime.module';
       useFactory: (configService: ConfigService) => {
         const databaseUrl = configService.get<string>('DATABASE_URL');
 
-        // If DATABASE_URL is provided, use MongoDB
+        // If DATABASE_URL is provided, use PostgreSQL (for production/hosted DBs)
         if (databaseUrl) {
           return {
-            type: 'mongodb',
+            type: 'postgres',
             url: databaseUrl,
             entities: [User, Lesson],
-            synchronize: true,
-            useUnifiedTopology: true,
-            useNewUrlParser: true,
+            synchronize: true, // Set to false in production and use migrations
+            ssl:
+              configService.get('DATABASE_SSL') === 'true'
+                ? { rejectUnauthorized: false }
+                : false,
           };
         }
 
         // Otherwise, use SQLite (for local development)
         return {
           type: 'sqlite',
-          database: `configService.get('DATABASE_PATH') ?? 'data/learning.sqlite'`,
+          database:
+            configService.get('DATABASE_PATH') ?? 'data/learning.sqlite',
           entities: [User, Lesson],
           synchronize: true,
         };
