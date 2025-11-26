@@ -261,9 +261,9 @@ export default function LiveLessonPage() {
             boxShadow="2xl"
             backdropFilter="blur(12px)"
           >
-            <Stack gap={6}>
-              <Box>
-                <Stack spacing={4} minH={{ base: "360px", md: "520px" }}>
+              <Stack gap={6}>
+                <Box>
+                  <Stack gap={4} minH={{ base: "360px", md: "520px" }}>
                   <SimpleGrid
                     columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }}
                     gap={4}
