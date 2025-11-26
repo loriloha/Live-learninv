@@ -1,0 +1,218 @@
+"use client";
+
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  Field,
+  Heading,
+  Input,
+  SimpleGrid,
+  Stack,
+  Text,
+  Textarea,
+} from "@chakra-ui/react";
+import { useToast } from "@chakra-ui/toast"; // Correct import in v3
+import dayjs from "dayjs";
+import { useEffect, useState } from "react";
+import NextLink from "next/link";
+import { useProtectedRoute } from "../../hooks/useProtectedRoute";
+import { useAuth } from "../../modules/auth/AuthContext";
+import { apiFetch } from "../../lib/api-client";
+import { Lesson } from "../../types/lesson";
+
+export default function DashboardPage() {
+  const { user, loading: authLoading } = useProtectedRoute();
+  const { token } = useAuth();
+  const toast = useToast();
+
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({
+    topic: "",
+    description: "",
+    scheduledAt: "",
+  });
+
+  const loadLessons = async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch<Lesson[]>("/lessons", { token });
+      setLessons(data);
+    } catch (err) {
+      toast({ title: "Failed to load lessons", status: "error" });
+    }
+  };
+
+  useEffect(() => {
+    if (!authLoading && token) {
+      loadLessons();
+    }
+  }, [token, authLoading]);
+
+  const handleCreateLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+
+    setCreating(true);
+    try {
+      await apiFetch<Lesson>("/lessons", {
+        method: "POST",
+        body: JSON.stringify(form),
+        token,
+      });
+
+      toast({ title: "Lesson scheduled!", status: "success" });
+      setForm({ topic: "", description: "", scheduledAt: "" });
+      await loadLessons();
+    } catch (err) {
+      toast({
+        title: "Failed to create lesson",
+        description: (err as Error).message,
+        status: "error",
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleJoin = async (lessonId: string) => {
+    if (!token) return;
+    try {
+      await apiFetch(`/lessons/${lessonId}/join`, { method: "POST", token });
+      toast({ title: "Joined lesson!", status: "success" });
+      await loadLessons();
+    } catch (err) {
+      toast({ title: "Could not join", status: "error" });
+    }
+  };
+
+  if (authLoading || !user) {
+    return <Text textAlign="center" mt={10}>Loading...</Text>;
+  }
+
+  return (
+    <Stack gap={10} maxW="6xl" mx="auto" px={4} py={8}>
+      <Heading>Welcome back, {user.displayName}!</Heading>
+
+      {/* Teacher: Schedule Lesson Form */}
+      {user.role === "teacher" && (
+        <Card.Root>
+          <Card.Body>
+            <Heading size="md" mb={6}>Schedule a New Lesson</Heading>
+            <form onSubmit={handleCreateLesson}>
+              <SimpleGrid columns={{ base: 1, md: 2 }} gap={6} mb={4}>
+                <Field.Root>
+                  <Field.Label>Topic</Field.Label>
+                  <Input
+                    value={form.topic}
+                    onChange={(e) => setForm({ ...form, topic: e.target.value })}
+                    placeholder="e.g. Advanced React Hooks"
+                    required
+                  />
+                </Field.Root>
+
+                <Field.Root>
+                  <Field.Label>Date & Time</Field.Label>
+                  <Input
+                    type="datetime-local"
+                    value={form.scheduledAt}
+                    onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+                    required
+                  />
+                </Field.Root>
+              </SimpleGrid>
+
+              <Field.Root>
+                <Field.Label>Description (optional)</Field.Label>
+                <Textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="What will students learn?"
+                  rows={3}
+                />
+              </Field.Root>
+
+              <Button
+                mt={6}
+                type="submit"
+                colorScheme="purple"
+                size="lg"
+                loading={creating}
+                loadingText="Scheduling..."
+              >
+                Create Lesson
+              </Button>
+            </form>
+          </Card.Body>
+        </Card.Root>
+      )}
+
+      {/* Upcoming Lessons List */}
+      <Box>
+        <Heading size="md" mb={4}>Upcoming Lessons</Heading>
+
+        {lessons.length === 0 ? (
+          <Card.Root>
+            <Card.Body textAlign="center" py={10}>
+              <Text color="gray.500">No lessons scheduled yet.</Text>
+            </Card.Body>
+          </Card.Root>
+        ) : (
+          <Stack gap={4}>
+            {lessons.map((lesson) => (
+              <Card.Root key={lesson.id} _hover={{ shadow: "lg" }} transition="0.2s">
+                <Card.Body>
+                  <Stack gap={3}>
+                    <Heading size="md">{lesson.topic}</Heading>
+                    {lesson.description && (
+                      <Text color="gray.600">{lesson.description}</Text>
+                    )}
+                    <Text fontSize="sm" fontWeight="medium">
+                      {dayjs(lesson.scheduledAt).format("dddd, MMMM D, YYYY [at] h:mm A")}
+                    </Text>
+
+                    <Box>
+                      <Badge colorScheme="purple" mr={2}>{lesson.status}</Badge>
+                      <Badge>Teacher: {lesson.teacher.displayName}</Badge>
+                      {lesson.student && (
+                        <Badge ml={2} colorScheme="green">
+                          Student: {lesson.student.displayName}
+                        </Badge>
+                      )}
+                    </Box>
+
+                    <Stack direction={{ base: "column", sm: "row" }} gap={3} mt={2}>
+                      <NextLink href={`/lessons/${lesson.id}`}>
+                        <Button variant="outline" size="sm">View Details</Button>
+                      </NextLink>
+
+                      {user.role === "student" && !lesson.student && (
+                        <Button
+                          colorScheme="purple"
+                          size="sm"
+                          onClick={() => handleJoin(lesson.id)}
+                        >
+                          Join Lesson
+                        </Button>
+                      )}
+
+                      {(user.id === lesson.teacher.id || user.id === lesson.student?.id) && (
+                        <NextLink href={`/lessons/${lesson.id}/live`}>
+                          <Button colorScheme="green" size="sm">
+                            {user.id === lesson.teacher.id ? "Start Lesson" : "Enter Room"}
+                          </Button>
+                        </NextLink>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Card.Body>
+              </Card.Root>
+            ))}
+          </Stack>
+        )}
+      </Box>
+    </Stack>
+  );
+}
