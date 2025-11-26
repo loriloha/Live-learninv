@@ -113,7 +113,7 @@ export default function LiveLessonPage() {
     })
       .then(setLesson)
       .catch(() => {
-        // Non-blocking — teacher can still continue
+        // Non-blocking
       });
   }, [lesson, token, user]);
 
@@ -253,6 +253,7 @@ export default function LiveLessonPage() {
           direction={{ base: "column", xl: "row" }}
           align="stretch"
         >
+          {/* Main Video Area */}
           <Box
             flex="3"
             bg="blackAlpha.600"
@@ -261,9 +262,9 @@ export default function LiveLessonPage() {
             boxShadow="2xl"
             backdropFilter="blur(12px)"
           >
-              <Stack gap={6}>
-                <Box>
-                  <Stack gap={4} minH={{ base: "360px", md: "520px" }}>
+            <Stack gap={6}>
+              <Box>
+                <Stack gap={4} minH={{ base: "360px", md: "520px" }}>
                   <SimpleGrid
                     columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }}
                     gap={4}
@@ -286,13 +287,14 @@ export default function LiveLessonPage() {
                 </Stack>
               </Box>
 
+              {/* Controls */}
               <Flex
                 justify="space-between"
                 align={{ base: "flex-start", md: "center" }}
                 gap={4}
                 flexWrap="wrap"
               >
-                <Stack direction="row" align="center" spacing={3}>
+                <Stack direction="row" align="center" gap={3}>
                   <AvatarGroup size="sm" max={4}>
                     {participants.map((participant) => (
                       <Avatar
@@ -308,7 +310,7 @@ export default function LiveLessonPage() {
                   </Text>
                 </Stack>
 
-                <Stack direction={{ base: "column", sm: "row" }} spacing={3}>
+                <Stack direction={{ base: "column", sm: "row" }} gap={3}>
                   <Button
                     rounded="full"
                     bg={isMicMuted ? "red.500" : "white"}
@@ -365,6 +367,7 @@ export default function LiveLessonPage() {
             </Stack>
           </Box>
 
+          {/* Chat / Participants Panel */}
           <Card.Root
             flex="1"
             maxH="80vh"
@@ -382,7 +385,7 @@ export default function LiveLessonPage() {
               <Heading size="sm">
                 {panelView === "chat" ? "Live chat" : "Participants"}
               </Heading>
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" gap={2}>
                 <Button
                   size="sm"
                   variant={panelView === "chat" ? "solid" : "ghost"}
@@ -400,13 +403,7 @@ export default function LiveLessonPage() {
               </Stack>
             </Card.Header>
 
-            <Card.Body
-              p={0}
-              flex="1"
-              display="flex"
-              flexDirection="column"
-              bg="gray.50"
-            >
+            <Card.Body p={0} flex="1" display="flex" flexDirection="column" bg="gray.50">
               {panelView === "chat" ? (
                 <>
                   <Box flex="1" overflowY="auto" p={6}>
@@ -434,12 +431,7 @@ export default function LiveLessonPage() {
                                 roundedTopRight={isSelf ? "md" : "2xl"}
                                 boxShadow="md"
                               >
-                                <Text
-                                  fontSize="xs"
-                                  fontWeight="bold"
-                                  opacity={0.8}
-                                  mb={1}
-                                >
+                                <Text fontSize="xs" fontWeight="bold" opacity={0.8} mb={1}>
                                   {msg.senderName}
                                 </Text>
                                 <Text fontSize="sm">{msg.message}</Text>
@@ -477,19 +469,11 @@ export default function LiveLessonPage() {
                     <Input
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      placeholder={
-                        sessionEndedBy
-                          ? "Session has ended"
-                          : "Type a message..."
-                      }
+                      placeholder={sessionEndedBy ? "Session has ended" : "Type a message..."}
                       disabled={Boolean(sessionEndedBy)}
                       flex="1"
                     />
-                    <Button
-                      type="submit"
-                      colorScheme="purple"
-                      isDisabled={!canSendMessage}
-                    >
+                    <Button type="submit" colorScheme="purple" isDisabled={!canSendMessage}>
                       Send
                     </Button>
                   </Box>
@@ -508,12 +492,8 @@ export default function LiveLessonPage() {
                         rounded="lg"
                         boxShadow="sm"
                       >
-                        <Text fontWeight="semibold">
-                          {participant.displayName}
-                        </Text>
-                        {participant.isLocal && (
-                          <Badge colorScheme="purple">You</Badge>
-                        )}
+                        <Text fontWeight="semibold">{participant.displayName}</Text>
+                        {participant.isLocal && <Badge colorScheme="purple">You</Badge>}
                       </Flex>
                     ))}
                   </Stack>
