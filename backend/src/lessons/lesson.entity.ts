@@ -21,7 +21,7 @@ export class Lesson {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: 'timestamp' })
   scheduledAt: Date;
 
   @Column({
