@@ -2,18 +2,27 @@
 "use client";
 
 import {
+  Alert,
+  AlertIcon,
+  Avatar,
+  AvatarGroup,
+  Badge,
   Box,
   Button,
   Card,
-  Separator,
   Flex,
   Heading,
+  Icon,
+  IconProps,
   Input,
+  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { PhoneIcon } from "@chakra-ui/icons";
+import { useToast } from "@chakra-ui/toast";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useProtectedRoute } from "../../../../hooks/useProtectedRoute";
 import { useAuth } from "../../../../modules/auth/AuthContext";
@@ -22,145 +31,491 @@ import { Lesson } from "../../../../types/lesson";
 import { VideoTile } from "../../../../components/VideoTile";
 import { useWebRTC } from "../../../../hooks/useWebRTC";
 
+const MicIcon = (props: IconProps) => (
+  <Icon viewBox="0 0 24 24" {...props}>
+    <path
+      fill="currentColor"
+      d="M12 15a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v7a3 3 0 0 0 3 3zm5-3a1 1 0 0 0-2 0 3 3 0 0 1-6 0 1 1 0 0 0-2 0 5 5 0 0 0 4 4.9V19H8v2h8v-2h-3v-2.1A5 5 0 0 0 17 12z"
+    />
+  </Icon>
+);
+
+const CameraIcon = (props: IconProps) => (
+  <Icon viewBox="0 0 24 24" {...props}>
+    <path
+      fill="currentColor"
+      d="M17 7h-6a4 4 0 0 0-4 4v2a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4zm5 2.5-3 2.25v-2a2 2 0 0 1 2-2h1zm-5 7.5h-6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2z"
+    />
+  </Icon>
+);
+
+type PanelView = "chat" | "participants";
 
 export default function LiveLessonPage() {
   const params = useParams<{ lessonId: string }>();
+  const router = useRouter();
+  const toast = useToast();
   const { user } = useProtectedRoute();
   const { token } = useAuth();
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [message, setMessage] = useState("");
+  const [panelView, setPanelView] = useState<PanelView>("chat");
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [endingSession, setEndingSession] = useState(false);
 
-  const { localStream, remoteStreams, messages, sendMessage } = useWebRTC(
-    params.lessonId,
-    user?.displayName ?? "Guest"
-  );
+  const {
+    localStream,
+    remoteStreams,
+    messages,
+    sendMessage,
+    participants,
+    isMicMuted,
+    isCameraOff,
+    toggleMic,
+    toggleCamera,
+    leaveSession,
+    notifySessionEnd,
+    sessionEndedBy,
+  } = useWebRTC({
+    lessonId: params.lessonId,
+    displayName: user?.displayName ?? "Guest",
+    userId: user?.id ?? "unknown",
+    role: user?.role ?? "student",
+  });
 
   useEffect(() => {
     if (!token || !params.lessonId) return;
     apiFetch<Lesson>(`/lessons/${params.lessonId}`, { token }).then(setLesson);
   }, [params.lessonId, token]);
 
+  useEffect(() => {
+    if (
+      !lesson ||
+      !token ||
+      !user ||
+      lesson.status === "live" ||
+      user.id !== lesson.teacher.id
+    ) {
+      return;
+    }
+    apiFetch<Lesson>(`/lessons/${lesson.id}/status`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ status: "live" }),
+    })
+      .then(setLesson)
+      .catch(() => {
+        // Non-blocking — teacher can still continue
+      });
+  }, [lesson, token, user]);
+
+  const handleLeave = () => {
+    leaveSession();
+    router.push("/dashboard");
+  };
+
+  const handleEndSession = async () => {
+    if (!lesson || !token) return;
+    setEndingSession(true);
+    try {
+      const updated = await apiFetch<Lesson>(`/lessons/${lesson.id}/status`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ status: "completed" }),
+      });
+      setLesson(updated);
+      notifySessionEnd();
+      leaveSession();
+      toast({ title: "Lesson ended", status: "success" });
+      router.push("/dashboard");
+    } catch (err) {
+      toast({
+        title: "Unable to end session",
+        description: (err as Error).message,
+        status: "error",
+      });
+    } finally {
+      setEndingSession(false);
+    }
+  };
+
+  const formattedSchedule = useMemo(() => {
+    if (!lesson) return "";
+    return dayjs(lesson.scheduledAt).format("dddd, MMMM D, YYYY [at] h:mm A");
+  }, [lesson]);
+
+  const videoTiles = useMemo(() => {
+    const tiles = [];
+    if (localStream && user) {
+      tiles.push(
+        <VideoTile
+          key="local"
+          stream={localStream}
+          label={`${user.displayName} (You)`}
+          muted
+          isLocal
+        />
+      );
+    } else {
+      tiles.push(
+        <Box
+          key="local-placeholder"
+          bg="blackAlpha.600"
+          rounded="2xl"
+          minH="260px"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          color="whiteAlpha.800"
+          fontWeight="semibold"
+        >
+          Allow camera & microphone access to join the call
+        </Box>
+      );
+    }
+    remoteStreams.forEach((peer) => {
+      tiles.push(
+        <VideoTile
+          key={peer.socketId}
+          stream={peer.stream}
+          label={peer.displayName ?? "Participant"}
+        />
+      );
+    });
+    return tiles;
+  }, [localStream, remoteStreams, user]);
+
   if (!lesson || !user) {
     return (
       <Box textAlign="center" py={20}>
-        <Text fontSize="2xl" color="gray.500">Connecting...</Text>
+        <Text fontSize="2xl" color="gray.500">
+          Connecting to your live room...
+        </Text>
       </Box>
     );
   }
 
+  const waitingFor = user.role === "teacher" ? "a student" : "the teacher";
+  const showWaitingState = remoteStreams.length === 0;
+  const canSendMessage = Boolean(message.trim()) && !sessionEndedBy;
+
   return (
-    <Box maxW="8xl" mx="auto" px={{ base: 4, md: 8 }} py={8}>
-      <Stack gap={2} mb={8}>
-        <Heading size="xl" color="purple.700">{lesson.topic}</Heading>
-        <Text color="gray.600">
-          {dayjs(lesson.scheduledAt).format("dddd, MMMM D, YYYY [at] h:mm A")}
-        </Text>
-      </Stack>
+    <Box
+      bgGradient="linear(to-b, gray.900, #1a172b)"
+      minH="100vh"
+      py={{ base: 6, md: 10 }}
+    >
+      <Stack maxW="8xl" mx="auto" px={{ base: 4, md: 8 }} gap={6}>
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "flex-start", md: "center" }}
+          gap={4}
+        >
+          <Box>
+            <Heading size="lg" color="white">
+              {lesson.topic}
+            </Heading>
+            <Text color="whiteAlpha.700">{formattedSchedule}</Text>
+          </Box>
+          <Stack direction="row" gap={3} align="center">
+            <Badge colorScheme="purple" px={3} py={1} rounded="full">
+              {lesson.status.toUpperCase()}
+            </Badge>
+            <Badge
+              colorScheme={lesson.student ? "green" : "orange"}
+              px={3}
+              py={1}
+              rounded="full"
+            >
+              {lesson.student ? "Student joined" : "Waiting for student"}
+            </Badge>
+          </Stack>
+        </Flex>
 
-      <Flex direction={{ base: "column", lg: "row" }} gap={10} align="flex-start">
-        {/* Videos */}
-        <Stack flex="2" gap={6} w="full">
-          {localStream ? (
-            <VideoTile stream={localStream} label={user.displayName} muted isLocal />
-          ) : (
-            <Box bg="gray.800" rounded="2xl" h="480px" display="flex" alignItems="center" justifyContent="center">
-              <Text color="whiteAlpha.800">Camera loading...</Text>
-            </Box>
-          )}
+        {sessionEndedBy && (
+          <Alert status="warning" borderRadius="lg">
+            <AlertIcon />
+            {sessionEndedBy} ended this session. You can safely leave the room.
+          </Alert>
+        )}
 
-          {remoteStreams.length > 0 ? (
-            remoteStreams.map((peer) => (
-              <VideoTile
-                key={peer.socketId}
-                stream={peer.stream}
-                label={peer.displayName || "Participant"}
-              />
-            ))
-          ) : (
-            <Box bg="gray.50" rounded="2xl" p={12} textAlign="center">
-              <Text fontSize="xl" color="gray.500">
-                Waiting for {user.role === "teacher" ? "student" : "teacher"}...
-              </Text>
-            </Box>
-          )}
-        </Stack>
-
-        {/* Chat */}
-        <Card.Root flex="1" minW="360px" maxH="720px" shadow="xl">
-          <Card.Header bg="purple.600" color="white">
-            <Heading size="md" textAlign="center">Live Chat</Heading>
-          </Card.Header>
-
-          <Card.Body p={0} display="flex" flexDir="column">
-            <Box flex="1" overflowY="auto" p={6}>
-              <Stack gap={4}>
-                {messages.length === 0 ? (
-                  <Text color="gray.500" textAlign="center">No messages yet</Text>
-                ) : (
-                  messages.map((msg, i) => (
+        <Flex
+          gap={6}
+          direction={{ base: "column", xl: "row" }}
+          align="stretch"
+        >
+          <Box
+            flex="3"
+            bg="blackAlpha.600"
+            rounded="3xl"
+            p={{ base: 4, md: 6 }}
+            boxShadow="2xl"
+            backdropFilter="blur(12px)"
+          >
+            <Stack gap={6}>
+              <Box>
+                <Stack spacing={4} minH={{ base: "360px", md: "520px" }}>
+                  <SimpleGrid
+                    columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }}
+                    gap={4}
+                  >
+                    {videoTiles}
+                  </SimpleGrid>
+                  {showWaitingState && (
                     <Box
-                      key={i}
-                      alignSelf={msg.senderId === user.id ? "flex-end" : "flex-start"}
-                      maxW="80%"
+                      bg="blackAlpha.500"
+                      border="1px dashed"
+                      borderColor="whiteAlpha.400"
+                      rounded="2xl"
+                      p={{ base: 6, md: 10 }}
+                      textAlign="center"
+                      color="whiteAlpha.700"
                     >
-                      <Box
-                        bg={msg.senderId === user.id ? "purple.500" : "gray.200"}
-                        color={msg.senderId === user.id ? "white" : "gray.800"}
+                      Waiting for {waitingFor} to connect...
+                    </Box>
+                  )}
+                </Stack>
+              </Box>
+
+              <Flex
+                justify="space-between"
+                align={{ base: "flex-start", md: "center" }}
+                gap={4}
+                flexWrap="wrap"
+              >
+                <Stack direction="row" align="center" spacing={3}>
+                  <AvatarGroup size="sm" max={4}>
+                    {participants.map((participant) => (
+                      <Avatar
+                        key={participant.id}
+                        name={participant.displayName}
+                        bg={participant.isLocal ? "purple.500" : "gray.600"}
+                        color="white"
+                      />
+                    ))}
+                  </AvatarGroup>
+                  <Text color="whiteAlpha.800">
+                    {participants.length} in this call
+                  </Text>
+                </Stack>
+
+                <Stack direction={{ base: "column", sm: "row" }} spacing={3}>
+                  <Button
+                    rounded="full"
+                    bg={isMicMuted ? "red.500" : "white"}
+                    color={isMicMuted ? "white" : "gray.800"}
+                    leftIcon={<MicIcon />}
+                    onClick={toggleMic}
+                    _hover={{ opacity: 0.9 }}
+                  >
+                    {isMicMuted ? "Unmute" : "Mute"}
+                  </Button>
+
+                  <Button
+                    rounded="full"
+                    bg={isCameraOff ? "red.500" : "white"}
+                    color={isCameraOff ? "white" : "gray.800"}
+                    leftIcon={<CameraIcon />}
+                    onClick={toggleCamera}
+                    _hover={{ opacity: 0.9 }}
+                  >
+                    {isCameraOff ? "Camera on" : "Camera off"}
+                  </Button>
+
+                  <Button
+                    rounded="full"
+                    variant="outline"
+                    colorScheme="whiteAlpha"
+                    onClick={() => setPanelOpen((prev) => !prev)}
+                  >
+                    {panelOpen ? "Hide chat" : "Show chat"}
+                  </Button>
+
+                  <Button
+                    rounded="full"
+                    colorScheme="red"
+                    leftIcon={<PhoneIcon />}
+                    onClick={handleLeave}
+                  >
+                    Leave
+                  </Button>
+
+                  {user.id === lesson.teacher.id && (
+                    <Button
+                      rounded="full"
+                      colorScheme="pink"
+                      onClick={handleEndSession}
+                      isLoading={endingSession}
+                      loadingText="Ending..."
+                    >
+                      End for everyone
+                    </Button>
+                  )}
+                </Stack>
+              </Flex>
+            </Stack>
+          </Box>
+
+          <Card.Root
+            flex="1"
+            maxH="80vh"
+            display={panelOpen ? "flex" : "none"}
+            flexDirection="column"
+            boxShadow="2xl"
+          >
+            <Card.Header
+              bg="purple.600"
+              color="white"
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+            >
+              <Heading size="sm">
+                {panelView === "chat" ? "Live chat" : "Participants"}
+              </Heading>
+              <Stack direction="row" spacing={2}>
+                <Button
+                  size="sm"
+                  variant={panelView === "chat" ? "solid" : "ghost"}
+                  onClick={() => setPanelView("chat")}
+                >
+                  Chat
+                </Button>
+                <Button
+                  size="sm"
+                  variant={panelView === "participants" ? "solid" : "ghost"}
+                  onClick={() => setPanelView("participants")}
+                >
+                  People
+                </Button>
+              </Stack>
+            </Card.Header>
+
+            <Card.Body
+              p={0}
+              flex="1"
+              display="flex"
+              flexDirection="column"
+              bg="gray.50"
+            >
+              {panelView === "chat" ? (
+                <>
+                  <Box flex="1" overflowY="auto" p={6}>
+                    <Stack gap={4}>
+                      {messages.length === 0 ? (
+                        <Text color="gray.500" textAlign="center">
+                          No messages yet
+                        </Text>
+                      ) : (
+                        messages.map((msg, i) => {
+                          const isSelf = msg.senderId === user.id;
+                          return (
+                            <Box
+                              key={`${msg.senderId}-${i}`}
+                              alignSelf={isSelf ? "flex-end" : "flex-start"}
+                              maxW="80%"
+                            >
+                              <Box
+                                bg={isSelf ? "purple.500" : "white"}
+                                color={isSelf ? "white" : "gray.800"}
+                                px={4}
+                                py={3}
+                                rounded="2xl"
+                                roundedTopLeft={isSelf ? "2xl" : "md"}
+                                roundedTopRight={isSelf ? "md" : "2xl"}
+                                boxShadow="md"
+                              >
+                                <Text
+                                  fontSize="xs"
+                                  fontWeight="bold"
+                                  opacity={0.8}
+                                  mb={1}
+                                >
+                                  {msg.senderName}
+                                </Text>
+                                <Text fontSize="sm">{msg.message}</Text>
+                              </Box>
+                              <Text
+                                fontSize="xs"
+                                color="gray.500"
+                                textAlign={isSelf ? "right" : "left"}
+                                mt={1}
+                              >
+                                {dayjs(msg.sentAt).format("h:mm A")}
+                              </Text>
+                            </Box>
+                          );
+                        })
+                      )}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    as="form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!canSendMessage) return;
+                      sendMessage(message);
+                      setMessage("");
+                    }}
+                    p={4}
+                    bg="white"
+                    borderTop="1px solid"
+                    borderColor="gray.200"
+                    display="flex"
+                    gap={3}
+                  >
+                    <Input
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder={
+                        sessionEndedBy
+                          ? "Session has ended"
+                          : "Type a message..."
+                      }
+                      disabled={Boolean(sessionEndedBy)}
+                      flex="1"
+                    />
+                    <Button
+                      type="submit"
+                      colorScheme="purple"
+                      isDisabled={!canSendMessage}
+                    >
+                      Send
+                    </Button>
+                  </Box>
+                </>
+              ) : (
+                <Box flex="1" overflowY="auto" p={6}>
+                  <Stack gap={3}>
+                    {participants.map((participant) => (
+                      <Flex
+                        key={participant.id}
+                        justify="space-between"
+                        align="center"
+                        bg="white"
                         px={4}
                         py={3}
-                        rounded="2xl"
-                        roundedTopLeft={msg.senderId === user.id ? "2xl" : "md"}
-                        roundedTopRight={msg.senderId === user.id ? "md" : "2xl"}
+                        rounded="lg"
+                        boxShadow="sm"
                       >
-                        <Text fontSize="xs" fontWeight="bold" opacity={0.9} mb={1}>
-                          {msg.senderName}
+                        <Text fontWeight="semibold">
+                          {participant.displayName}
                         </Text>
-                        <Text fontSize="sm">{msg.message}</Text>
-                      </Box>
-                      <Text fontSize="xs" color="gray.500" textAlign={msg.senderId === user.id ? "right" : "left"} mt={1}>
-                        {dayjs(msg.sentAt).format("h:mm A")}
-                      </Text>
-                    </Box>
-                  ))
-                )}
-              </Stack>
-            </Box>
-
-            <Separator />
-
-            <Flex
-              as="form"
-              p={4}
-              gap={3}
-              bg="gray.50"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (message.trim()) {
-                  sendMessage(message);
-                  setMessage("");
-                }
-              }}
-            >
-              <Input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type a message..."
-                variant="outline"   // ← Fixed: was "filled"
-                flex="1"
-              />
-              <Button
-                type="submit"
-                colorScheme="purple"
-                disabled={!message.trim()}  // ← Fixed: was isDisabled
-                px={8}
-              >
-                Send
-              </Button>
-            </Flex>
-          </Card.Body>
-        </Card.Root>
-      </Flex>
+                        {participant.isLocal && (
+                          <Badge colorScheme="purple">You</Badge>
+                        )}
+                      </Flex>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Card.Body>
+          </Card.Root>
+        </Flex>
+      </Stack>
     </Box>
   );
 }

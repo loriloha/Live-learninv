@@ -57,9 +57,15 @@ export default function DashboardPage() {
 
     setCreating(true);
     try {
+      const scheduledAtISO = dayjs(form.scheduledAt).isValid()
+        ? dayjs(form.scheduledAt).toISOString()
+        : form.scheduledAt;
       await apiFetch<Lesson>("/lessons", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          scheduledAt: scheduledAtISO,
+        }),
         token,
       });
 
