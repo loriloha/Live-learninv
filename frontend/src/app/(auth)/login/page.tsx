@@ -9,7 +9,6 @@ import {
   Heading,
   Input,
   Stack,
-  Text,
 } from "@chakra-ui/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -65,10 +64,11 @@ export default function LoginPage() {
               <Button type="submit" colorScheme="purple" size="lg" loading={loading}>
                 Log in
               </Button>
-
-              <Button as="a" href="/register" variant="ghost" colorScheme="purple" w="full">
+<a href="/register" style={{ textAlign: "center", display: "block", color: "#6B46C1" }}>
+               
                 Need an account? Register
-              </Button>
+              </a>
+              
             </Stack>
           </form>
         </Card.Body>

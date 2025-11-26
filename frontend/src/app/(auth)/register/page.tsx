@@ -101,6 +101,7 @@ export default function RegisterPage() {
                         name="role"
                         value={role}
                         checked={form.role === role}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         onChange={(e) => setForm({ ...form, role: e.target.value as any })}
                         style={{ marginRight: "10px" }}
                       />
@@ -124,9 +125,9 @@ export default function RegisterPage() {
                 Create account
               </Button>
 
-              <Button as="a" href="/login" variant="ghost" colorScheme="purple" w="full">
+              <a href="/login" style={{ textAlign: "center", display: "block", color: "#6B46C1" }}>
                 Already have an account? Sign in
-              </Button>
+              </a>
             </Stack>
           </form>
         </Card.Body>
