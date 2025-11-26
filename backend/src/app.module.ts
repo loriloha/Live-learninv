@@ -18,25 +18,26 @@ import { RealtimeModule } from './realtime/realtime.module';
       useFactory: (configService: ConfigService) => {
         const databaseUrl = configService.get<string>('DATABASE_URL');
 
-        // If DATABASE_URL is provided, use PostgreSQL (for production/hosted DBs)
+        // If DATABASE_URL is provided (Neon or other PostgreSQL), use it
         if (databaseUrl) {
           return {
             type: 'postgres',
             url: databaseUrl,
             entities: [User, Lesson],
-            synchronize: true, // Set to false in production and use migrations
-            ssl:
-              configService.get('DATABASE_SSL') === 'true'
-                ? { rejectUnauthorized: false }
-                : false,
+            synchronize: configService.get('NODE_ENV') !== 'production', // Be careful with this in production
+            ssl: true, // Neon requires SSL
+            extra: {
+              ssl: {
+                rejectUnauthorized: false,
+              },
+            },
           };
         }
 
         // Otherwise, use SQLite (for local development)
         return {
           type: 'sqlite',
-          database:
-            configService.get('DATABASE_PATH') ?? 'data/learning.sqlite',
+          database: `configService.get('DATABASE_PATH') ?? 'data/learning.sqlite'`,
           entities: [User, Lesson],
           synchronize: true,
         };
