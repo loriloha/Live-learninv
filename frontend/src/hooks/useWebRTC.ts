@@ -1,3 +1,4 @@
+// src/hooks/useWebRTC.ts
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -5,44 +6,107 @@ import SimplePeer, { Instance as PeerInstance, SignalData } from "simple-peer";
 import { io, Socket } from "socket.io-client";
 import { API_BASE } from "../lib/api-client";
 
-type RemoteStream = {
+interface RemoteStream {
   socketId: string;
   stream: MediaStream;
   displayName?: string;
-};
+}
 
-type ChatMessage = {
-  senderName: string;
+interface ChatMessage {
   message: string;
-  sentAt: string;
-};
+  senderName: string;
+  senderId: string;
+  sentAt: string | number;
+}
 
 export function useWebRTC(lessonId: string, displayName: string) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const socketRef = useRef<Socket>();
+
+  const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<Record<string, PeerInstance>>({});
 
+  // Get camera & mic
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
+
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
-        if (isMounted) {
-          setLocalStream(stream);
-        }
+        if (mounted) setLocalStream(stream);
       })
-      .catch((err) => console.error("Media error", err));
+      .catch(() => console.log("Camera/mic blocked"));
+
     return () => {
-      isMounted = false;
+      mounted = false;
+      localStream?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
+  // Cleanup refs
+  const removePeer = useCallback((socketId: string) => {
+    peersRef.current[socketId]?.destroy();
+    delete peersRef.current[socketId];
+    setRemoteStreams((prev) => prev.filter((s) => s.socketId !== socketId));
+  }, []);
+
+  const createPeer = useCallback(
+    (remoteSocketId: string, initiator: boolean): PeerInstance => {
+      if (peersRef.current[remoteSocketId]) {
+        return peersRef.current[remoteSocketId];
+      }
+
+      const peer = new SimplePeer({
+        initiator,
+        stream: localStream!,
+        trickle: true,
+      });
+
+      peer.on("signal", (signal: SignalData) => {
+        socketRef.current?.emit("signal", {
+          targetSocketId: remoteSocketId,
+          signal,
+        });
+      });
+
+      peer.on("stream", (stream: MediaStream) => {
+        setRemoteStreams((prev) => [
+          ...prev.filter((s) => s.socketId !== remoteSocketId),
+          { socketId: remoteSocketId, stream },
+        ]);
+      });
+
+      peer.on("close", () => removePeer(remoteSocketId));
+      peer.on("error", () => removePeer(remoteSocketId));
+
+      peersRef.current[remoteSocketId] = peer;
+      return peer;
+    },
+    [localStream, removePeer]
+  );
+
+  const sendMessage = useCallback(
+    (text: string) => {
+      if (!text.trim() || !socketRef.current) return;
+
+      const msg: ChatMessage = {
+        message: text.trim(),
+        senderName: displayName,
+        senderId: socketRef.current.id || "unknown",
+        sentAt: new Date().toISOString(),
+      };
+
+      socketRef.current.emit("chat-message", msg);
+      setMessages((prev) => [...prev, msg]);
+    },
+    [displayName]
+  );
+
+  // Main socket connection
   useEffect(() => {
-    if (!lessonId || !localStream) {
-      return;
-    }
+    if (!lessonId || !localStream) return;
+
     const socket = io(`${API_BASE}/live`, {
       transports: ["websocket"],
     });
@@ -52,105 +116,29 @@ export function useWebRTC(lessonId: string, displayName: string) {
       socket.emit("join-room", { lessonId, displayName });
     });
 
-    socket.on("peer-joined", ({ socketId }) => {
+    socket.on("peer-joined", ({ socketId }: { socketId: string }) => {
       createPeer(socketId, true);
     });
 
-    socket.on("peer-left", ({ socketId }) => {
+    socket.on("peer-left", ({ socketId }: { socketId: string }) => {
       removePeer(socketId);
     });
 
-    const handleSignal = (payload: { from: string; signal: SignalData }) => {
-      const peer = createPeer(payload.from, false);
-      peer.signal(payload.signal);
-    };
+    socket.on("signal", ({ from, signal }: { from: string; signal: SignalData }) => {
+      const peer = peersRef.current[from] || createPeer(from, false);
+      peer.signal(signal);
+    });
 
-    socket.on("signal-offer", handleSignal);
-    socket.on("signal-answer", handleSignal);
-    socket.on("signal-ice", handleSignal);
-
-    socket.on("chat-message", (payload: ChatMessage) => {
-      setMessages((prev) => [...prev, payload]);
+    socket.on("chat-message", (msg: ChatMessage) => {
+      setMessages((prev) => [...prev, msg]);
     });
 
     return () => {
-      Object.values(peersRef.current).forEach((peer) => peer.destroy());
+      Object.values(peersRef.current).forEach((p) => p.destroy());
       peersRef.current = {};
       socket.disconnect();
-      localStream.getTracks().forEach((track) => track.stop());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId, localStream, displayName]);
-
-  const removePeer = useCallback((socketId: string) => {
-    const peer = peersRef.current[socketId];
-    if (peer) {
-      peer.destroy();
-      delete peersRef.current[socketId];
-    }
-    setRemoteStreams((prev) => prev.filter((s) => s.socketId !== socketId));
-  }, []);
-
-  const createPeer = useCallback(
-    (remoteSocketId: string, initiator: boolean) => {
-      if (!localStream) {
-        throw new Error("Local stream missing");
-      }
-      if (peersRef.current[remoteSocketId]) {
-        return peersRef.current[remoteSocketId];
-      }
-      const peer = new SimplePeer({
-        initiator,
-        stream: localStream,
-        trickle: true,
-      });
-
-      peer.on("signal", (signal) => {
-        const socket = socketRef.current;
-        if (!socket) return;
-        const event =
-          signal.type === "offer"
-            ? "signal-offer"
-            : signal.type === "answer"
-            ? "signal-answer"
-            : "signal-ice";
-        socket.emit(event, {
-          lessonId,
-          signal,
-          targetSocketId: remoteSocketId,
-        });
-      });
-
-      peer.on("stream", (stream) => {
-        setRemoteStreams((prev) => [
-          ...prev.filter((s) => s.socketId !== remoteSocketId),
-          { socketId: remoteSocketId, stream },
-        ]);
-      });
-
-      peer.on("close", () => removePeer(remoteSocketId));
-      peer.on("error", (err) => {
-        console.error(err);
-        removePeer(remoteSocketId);
-      });
-
-      peersRef.current[remoteSocketId] = peer;
-      return peer;
-    },
-    [lessonId, localStream, removePeer]
-  );
-
-  const sendMessage = useCallback(
-    (message: string) => {
-      if (!message.trim()) return;
-      socketRef.current?.emit("chat-message", {
-        lessonId,
-        message,
-        senderName: displayName,
-      });
-    },
-    [lessonId, displayName]
-  );
+  }, [lessonId, localStream, displayName, createPeer, removePeer]);
 
   return {
     localStream,
@@ -159,4 +147,3 @@ export function useWebRTC(lessonId: string, displayName: string) {
     sendMessage,
   };
 }
-

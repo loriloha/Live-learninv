@@ -1,46 +1,61 @@
-"use client";
-
+// src/components/VideoTile.tsx
 import { Box, Text } from "@chakra-ui/react";
 import { useEffect, useRef } from "react";
 
-type Props = {
-  stream: MediaStream | null;
+interface Props {
+  stream: MediaStream;
   label: string;
   muted?: boolean;
-};
+  isLocal?: boolean;
+}
 
-export function VideoTile({ stream, label, muted }: Props) {
-  const ref = useRef<HTMLVideoElement>(null);
+export function VideoTile({ stream, label, muted = false, isLocal = false }: Props) {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (ref.current && stream) {
-      ref.current.srcObject = stream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
     }
   }, [stream]);
 
   return (
-    <Box bg="black" rounded="md" overflow="hidden" position="relative">
+    <Box
+      position="relative"
+      rounded="2xl"
+      overflow="hidden"
+      boxShadow="2xl"
+      bg="black"
+      border={isLocal ? "5px solid" : "none"}
+      borderColor="purple.500"
+    >
       <video
-        ref={ref}
+        ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        style={{
+          width: "100%",
+          height: "auto",
+          maxHeight: "560px",
+          objectFit: "cover",
+          transform: isLocal ? "scaleX(-1)" : "none", // Mirror local video
+        }}
       />
-      <Text
+
+      <Box
         position="absolute"
-        bottom="2"
-        left="2"
-        px="2"
-        py="1"
-        bg="blackAlpha.600"
+        bottom={0}
+        left={0}
+        right={0}
+        bgGradient="linear(to-t, blackAlpha.800, transparent)"
         color="white"
-        fontSize="sm"
-        rounded="md"
+        p={4}
       >
-        {label}
-      </Text>
+        <Text fontWeight="bold" fontSize="lg">
+          {label}
+          {isLocal && " (You)"}
+        </Text>
+      </Box>
     </Box>
   );
 }
-

@@ -1,3 +1,4 @@
+// src/app/lessons/[lessonId]/live/page.tsx
 "use client";
 
 import {
@@ -21,6 +22,7 @@ import { Lesson } from "../../../../types/lesson";
 import { VideoTile } from "../../../../components/VideoTile";
 import { useWebRTC } from "../../../../hooks/useWebRTC";
 
+
 export default function LiveLessonPage() {
   const params = useParams<{ lessonId: string }>();
   const { user } = useProtectedRoute();
@@ -29,117 +31,72 @@ export default function LiveLessonPage() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [message, setMessage] = useState("");
 
-  // WebRTC + Chat hook
   const { localStream, remoteStreams, messages, sendMessage } = useWebRTC(
     params.lessonId,
     user?.displayName ?? "Guest"
   );
 
-  // Load lesson details
   useEffect(() => {
     if (!token || !params.lessonId) return;
-
-    apiFetch<Lesson>(`/lessons/${params.lessonId}`, { token })
-      .then(setLesson)
-      .catch((err) => {
-        console.error("Failed to load lesson:", err);
-      });
+    apiFetch<Lesson>(`/lessons/${params.lessonId}`, { token }).then(setLesson);
   }, [params.lessonId, token]);
 
-  // Show loading state
   if (!lesson || !user) {
     return (
-      <Box textAlign="center" mt={20}>
-        <Text fontSize="xl" color="gray.500">
-          Connecting to live room...
-        </Text>
+      <Box textAlign="center" py={20}>
+        <Text fontSize="2xl" color="gray.500">Connecting...</Text>
       </Box>
     );
   }
 
   return (
-    <Box maxW="8xl" mx="auto" px={{ base: 4, md: 6 }} py={6}>
-      {/* Header */}
+    <Box maxW="8xl" mx="auto" px={{ base: 4, md: 8 }} py={8}>
       <Stack gap={2} mb={8}>
-        <Heading size="xl">{lesson.topic}</Heading>
-        <Text color="gray.600" fontWeight="medium">
+        <Heading size="xl" color="purple.700">{lesson.topic}</Heading>
+        <Text color="gray.600">
           {dayjs(lesson.scheduledAt).format("dddd, MMMM D, YYYY [at] h:mm A")}
-        </Text>
-        <Text fontSize="sm" color="gray.500">
-          {user.role === "teacher" ? "You are the teacher" : `Teacher: ${lesson.teacher.displayName}`}
         </Text>
       </Stack>
 
-      {/* Main Layout: Video + Chat */}
-      <Flex
-        gap={{ base: 6, lg: 8 }}
-        flexDir={{ base: "column", lg: "row" }}
-        alignItems="flex-start"
-      >
-        {/* Video Section */}
+      <Flex direction={{ base: "column", lg: "row" }} gap={10} align="flex-start">
+        {/* Videos */}
         <Stack flex="2" gap={6} w="full">
-          {/* Local Video (You) */}
           {localStream ? (
-            <VideoTile
-              stream={localStream}
-              label={`${user.displayName} (You)`}
-              muted
-              isLocal
-            />
+            <VideoTile stream={localStream} label={user.displayName} muted isLocal />
           ) : (
-            <Box
-              bg="gray.200"
-              rounded="xl"
-              h="400px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              border="2px dashed"
-              borderColor="gray.400"
-            >
-              <Text color="gray.600">Camera initializing...</Text>
+            <Box bg="gray.800" rounded="2xl" h="480px" display="flex" alignItems="center" justifyContent="center">
+              <Text color="whiteAlpha.800">Camera loading...</Text>
             </Box>
           )}
 
-          {/* Remote Videos */}
           {remoteStreams.length > 0 ? (
-            remoteStreams.map((remote) => (
+            remoteStreams.map((peer) => (
               <VideoTile
-                key={remote.socketId}
-                stream={remote.stream}
-                label={remote.displayName || "Participant"}
+                key={peer.socketId}
+                stream={peer.stream}
+                label={peer.displayName || "Participant"}
               />
             ))
           ) : (
-            <Box
-              bg="gray.50"
-              rounded="xl"
-              p={10}
-              textAlign="center"
-              border="2px dashed"
-              borderColor="gray.300"
-            >
-              <Text fontSize="lg" color="gray.500">
-                Waiting for {user.role === "teacher" ? "student" : "teacher"} to join...
+            <Box bg="gray.50" rounded="2xl" p={12} textAlign="center">
+              <Text fontSize="xl" color="gray.500">
+                Waiting for {user.role === "teacher" ? "student" : "teacher"}...
               </Text>
             </Box>
           )}
         </Stack>
 
-        {/* Chat Sidebar */}
-        <Card.Root flex="1" minW="320px" maxH="700px" alignSelf="stretch">
-          <Card.Header>
-            <Heading size="md">Live Chat</Heading>
+        {/* Chat */}
+        <Card.Root flex="1" minW="360px" maxH="720px" shadow="xl">
+          <Card.Header bg="purple.600" color="white">
+            <Heading size="md" textAlign="center">Live Chat</Heading>
           </Card.Header>
 
-          <Card.Body display="flex" flexDir="column" gap={4} p={0}>
-            {/* Messages */}
-            <Box flex="1" overflowY="auto" px={6} pb={4}>
+          <Card.Body p={0} display="flex" flexDir="column">
+            <Box flex="1" overflowY="auto" p={6}>
               <Stack gap={4}>
                 {messages.length === 0 ? (
-                  <Text color="gray.500" fontSize="sm">
-                    No messages yet. Say hello!
-                  </Text>
+                  <Text color="gray.500" textAlign="center">No messages yet</Text>
                 ) : (
                   messages.map((msg, i) => (
                     <Box
@@ -148,25 +105,20 @@ export default function LiveLessonPage() {
                       maxW="80%"
                     >
                       <Box
-                        bg={msg.senderId === user.id ? "purple.500" : "gray.100"}
+                        bg={msg.senderId === user.id ? "purple.500" : "gray.200"}
                         color={msg.senderId === user.id ? "white" : "gray.800"}
                         px={4}
-                        py={2}
-                        rounded="lg"
-                        roundedBottomLeft={msg.senderId === user.id ? "lg" : "sm"}
-                        roundedBottomRight={msg.senderId === user.id ? "sm" : "lg"}
+                        py={3}
+                        rounded="2xl"
+                        roundedTopLeft={msg.senderId === user.id ? "2xl" : "md"}
+                        roundedTopRight={msg.senderId === user.id ? "md" : "2xl"}
                       >
-                        <Text fontSize="sm" fontWeight="bold" opacity={0.9}>
+                        <Text fontSize="xs" fontWeight="bold" opacity={0.9} mb={1}>
                           {msg.senderName}
                         </Text>
                         <Text fontSize="sm">{msg.message}</Text>
                       </Box>
-                      <Text
-                        fontSize="xs"
-                        color="gray.500"
-                        textAlign={msg.senderId === user.id ? "right" : "left"}
-                        mt={1}
-                      >
+                      <Text fontSize="xs" color="gray.500" textAlign={msg.senderId === user.id ? "right" : "left"} mt={1}>
                         {dayjs(msg.sentAt).format("h:mm A")}
                       </Text>
                     </Box>
@@ -177,12 +129,11 @@ export default function LiveLessonPage() {
 
             <Separator />
 
-            {/* Message Input */}
             <Flex
               as="form"
-              px={6}
-              pb={4}
+              p={4}
               gap={3}
+              bg="gray.50"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (message.trim()) {
@@ -195,10 +146,15 @@ export default function LiveLessonPage() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type a message..."
-                variant="filled"
+                variant="outline"   // ← Fixed: was "filled"
                 flex="1"
               />
-              <Button type="submit" colorScheme="purple" isDisabled={!message.trim()}>
+              <Button
+                type="submit"
+                colorScheme="purple"
+                disabled={!message.trim()}  // ← Fixed: was isDisabled
+                px={8}
+              >
                 Send
               </Button>
             </Flex>

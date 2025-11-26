@@ -14,3 +14,18 @@ export type Lesson = {
   } | null;
 };
 
+
+// Add this new type — required by useWebRTC hook and live page
+export interface ChatMessage {
+  message: string;
+  senderName: string;
+  senderId: string;        // This was missing → caused the error
+  sentAt: string | number; // Can be ISO string or timestamp
+}
+
+// Optional: useful for WebRTC peer info
+export interface PeerStream {
+  socketId: string;
+  stream: MediaStream;
+  displayName?: string;
+}
