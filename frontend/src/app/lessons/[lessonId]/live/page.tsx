@@ -193,7 +193,8 @@ export default function LiveLessonPage() {
   }
 
   const waitingFor = user.role === "teacher" ? "a student" : "the teacher";
-  const showWaitingState = remoteStreams.length === 0;
+  const hasOtherParticipants = participants.some((p) => !p.isLocal);
+  const showWaitingState = !hasOtherParticipants;
   const canSendMessage = Boolean(message.trim()) && !sessionEndedBy;
 
   return (

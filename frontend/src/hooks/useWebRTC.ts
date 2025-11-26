@@ -98,19 +98,17 @@ export function useWebRTC({
   }, [refreshParticipants]);
 
   const createPeer = useCallback(
-    (remoteSocketId: string, initiator: boolean): PeerInstance | null => {
-      if (peersRef.current[remoteSocketId]) {
-        return peersRef.current[remoteSocketId];
-      }
-
-      if (!localStreamRef.current) {
-        return null;
+    (remoteSocketId: string, initiator: boolean): PeerInstance => {
+      const existing = peersRef.current[remoteSocketId];
+      if (existing) {
+        return existing;
       }
 
       const peer = new SimplePeer({
         initiator,
-        stream: localStreamRef.current,
         trickle: true,
+        // Attach stream if we already have local media; otherwise we'll add it later.
+        stream: localStreamRef.current ?? undefined,
       });
 
       peer.on("signal", (signal: SignalData) => {
@@ -137,6 +135,16 @@ export function useWebRTC({
       peer.on("error", () => removePeer(remoteSocketId));
 
       peersRef.current[remoteSocketId] = peer;
+
+      // If media arrived after the peer was created, make sure the peer gets the stream.
+      if (localStreamRef.current) {
+        try {
+          peer.addStream(localStreamRef.current);
+        } catch {
+          // addStream is best-effort; ignore if already added.
+        }
+      }
+
       return peer;
     },
     [removePeer]
@@ -189,7 +197,7 @@ export function useWebRTC({
     socketRef.current?.emit("end-session");
   }, []);
 
-  // Acquire camera/mic
+  // Acquire camera/mic (optional for chat / presence; required for sending A/V)
   useEffect(() => {
     let mounted = true;
     navigator.mediaDevices
@@ -201,6 +209,16 @@ export function useWebRTC({
         }
         localStreamRef.current = stream;
         setLocalStream(stream);
+
+        // Attach the newly available stream to any already-created peers so they
+        // start receiving our audio/video, even if they connected before media was ready.
+        Object.values(peersRef.current).forEach((peer) => {
+          try {
+            peer.addStream(stream);
+          } catch {
+            // ignore if stream is already attached
+          }
+        });
       })
       .catch((err) => {
         console.error("Camera/mic blocked", err);
@@ -212,9 +230,9 @@ export function useWebRTC({
     };
   }, [cleanupConnections]);
 
-  // Main socket connection
+  // Main socket connection (independent of camera/mic so chat & presence always work)
   useEffect(() => {
-    if (!lessonId || !localStreamRef.current || !userId) return;
+    if (!lessonId || !userId) return;
 
     const socket = io(`${API_BASE}/live`, {
       transports: ["websocket"],
