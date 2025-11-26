@@ -1,9 +1,8 @@
 // src/app/lessons/[lessonId]/live/page.tsx
 "use client";
 
+import { Alert, AlertIcon } from "@chakra-ui/alert";
 import {
-  Alert,
-  AlertIcon,
   Avatar,
   AvatarGroup,
   Badge,
@@ -19,7 +18,6 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { PhoneIcon } from "@chakra-ui/icons";
 import { useToast } from "@chakra-ui/toast";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -45,6 +43,15 @@ const CameraIcon = (props: IconProps) => (
     <path
       fill="currentColor"
       d="M17 7h-6a4 4 0 0 0-4 4v2a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4v-2a4 4 0 0 0-4-4zm5 2.5-3 2.25v-2a2 2 0 0 1 2-2h1zm-5 7.5h-6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2z"
+    />
+  </Icon>
+);
+
+const EndCallIcon = (props: IconProps) => (
+  <Icon viewBox="0 0 24 24" {...props}>
+    <path
+      fill="currentColor"
+      d="M6.62 10.79a15.05 15.05 0 0 1 10.76 0l1.83-1.83a2 2 0 0 1 2.83 0l1.54 1.54a2 2 0 0 1 0 2.83l-2.7 2.7a2 2 0 0 1-2.12.48 20.68 20.68 0 0 0-12.6 0 2 2 0 0 1-2.12-.48l-2.7-2.7a2 2 0 0 1 0-2.83l1.54-1.54a2 2 0 0 1 2.83 0z"
     />
   </Icon>
 );
@@ -336,7 +343,7 @@ export default function LiveLessonPage() {
                   <Button
                     rounded="full"
                     colorScheme="red"
-                    leftIcon={<PhoneIcon />}
+                    leftIcon={<EndCallIcon />}
                     onClick={handleLeave}
                   >
                     Leave
