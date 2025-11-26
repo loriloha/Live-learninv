@@ -69,17 +69,32 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() payload: JoinPayload,
   ) {
     await this.lessonsService.findById(payload.lessonId);
-    const room = this.server.sockets.adapter.rooms.get(payload.lessonId);
-    const existingPeers: PeerSummary[] = room
-      ? Array.from(room).map((socketId) => {
-          const socket = this.server.sockets.sockets.get(socketId);
+    // In a namespaced gateway, `this.server` is already the Namespace.
+    // Use its adapter and sockets safely, and fall back to an empty list if unavailable.
+    let existingPeers: PeerSummary[] = [];
+    try {
+      const nsp: any = this.server as any;
+      const adapter = nsp.adapter;
+      const room: Set<string> | undefined = adapter?.rooms?.get(payload.lessonId);
+
+      if (room && room.size > 0) {
+        existingPeers = Array.from(room).map((socketId) => {
+          const socket: any = nsp.sockets?.get(socketId) ?? null;
           return {
             socketId,
-            displayName: socket?.data.displayName,
-            userId: socket?.data.userId,
+            displayName: socket?.data?.displayName,
+            userId: socket?.data?.userId,
           };
-        })
-      : [];
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to read existing peers for lesson ${payload.lessonId}: ${String(
+          err,
+        )}`,
+      );
+      existingPeers = [];
+    }
 
     client.data.lessonId = payload.lessonId;
     client.data.displayName = payload.displayName;
