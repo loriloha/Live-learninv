@@ -16,6 +16,7 @@ type SignalPayload = {
   signal: unknown;
 };
 
+
 type ChatPayload = {
   message: string;
   senderName?: string;
@@ -44,7 +45,7 @@ type PeerSummary = {
 })
 export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server: Server; // Note: At runtime, this is actually a Namespace instance
 
   private readonly logger = new Logger(LiveGateway.name);
 
@@ -62,7 +63,6 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
   }
-
   @SubscribeMessage('join-room')
   async handleJoinRoom(
     @ConnectedSocket() client: Socket,
@@ -123,7 +123,9 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
       signal: payload.signal,
     };
     if (payload.targetSocketId) {
-      const target = this.server.sockets.sockets.get(payload.targetSocketId);
+      // FIX: Use `this.server.sockets.get` instead of `this.server.sockets.sockets.get`
+      // When using a namespace, `this.server.sockets` is the Map of sockets.
+      const target = this.server.sockets.get(payload.targetSocketId); 
       target?.emit('signal', body);
       return;
     }
