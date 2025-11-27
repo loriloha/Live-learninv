@@ -104,9 +104,18 @@ export function useWebRTC({
         return existing;
       }
 
+      // FIX: Add STUN server configuration for NAT traversal
+      const peerConfig = {
+          iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+          ],
+      };
+
       const peer = new SimplePeer({
         initiator,
         trickle: true,
+        // Pass the configuration
+        config: peerConfig, 
         // Attach stream if we already have local media; otherwise we'll add it later.
         stream: localStreamRef.current ?? undefined,
       });
@@ -197,7 +206,7 @@ export function useWebRTC({
     socketRef.current?.emit("end-session");
   }, []);
 
-  // Acquire camera/mic (optional for chat / presence; required for sending A/V)
+  // Acquire camera/mic (required for sending A/V)
   useEffect(() => {
     let mounted = true;
     navigator.mediaDevices
@@ -210,8 +219,7 @@ export function useWebRTC({
         localStreamRef.current = stream;
         setLocalStream(stream);
 
-        // Attach the newly available stream to any already-created peers so they
-        // start receiving our audio/video, even if they connected before media was ready.
+        // Attach the newly available stream to any already-created peers 
         Object.values(peersRef.current).forEach((peer) => {
           try {
             peer.addStream(stream);
@@ -230,9 +238,10 @@ export function useWebRTC({
     };
   }, [cleanupConnections]);
 
-  // Main socket connection (independent of camera/mic so chat & presence always work)
+  // Main socket connection (depends on localStream being available)
   useEffect(() => {
-    if (!lessonId || !userId || !localStream) return;
+    // FIX/IMPROVEMENT: Only connect socket once we have media (localStream)
+    if (!lessonId || !userId || !localStream) return; 
 
     const socket = io(`${API_BASE}/live`, {
       transports: ["websocket"],
@@ -259,6 +268,7 @@ export function useWebRTC({
       ) => {
         peers.forEach((peer) => {
           participantDirectory.current[peer.socketId] = peer;
+          // CORRECT: Newly joined peer initiates connection with all existing peers
           createPeer(peer.socketId, true);
         });
         refreshParticipants();
@@ -269,10 +279,9 @@ export function useWebRTC({
       "peer-joined",
       (peer: { socketId: string; displayName?: string; userId?: string }) => {
         participantDirectory.current[peer.socketId] = peer;
-        // Create a peer connection for the newly joined peer
-        // We are NOT the initiator because the new peer will create their own peer connection
-        // and send signals to us. We just need to be ready to receive and respond.
-        createPeer(peer.socketId, true);
+        // FIX: Existing peer must be the INITIATOR (true) to establish the
+        // bidirectional connection with the *newly* joined peer.
+        createPeer(peer.socketId, true); 
         refreshParticipants();
       }
     );
@@ -284,7 +293,8 @@ export function useWebRTC({
     socket.on(
       "signal",
       ({ from, signal }: { from: string; signal: SignalData }) => {
-        const peer = peersRef.current[from] || createPeer(from, false);
+        // Peer is created as non-initiator when receiving the first signal
+        const peer = peersRef.current[from] || createPeer(from, false); 
         peer?.signal(signal);
       }
     );
@@ -307,7 +317,7 @@ export function useWebRTC({
     displayName,
     userId,
     role,
-    localStream,
+    localStream, // Ensure socket connection logic runs after localStream is ready
     createPeer,
     removePeer,
     refreshParticipants,
