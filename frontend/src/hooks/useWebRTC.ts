@@ -281,7 +281,7 @@ export function useWebRTC({
         participantDirectory.current[peer.socketId] = peer;
         // FIX: Existing peer must be the INITIATOR (true) to establish the
         // bidirectional connection with the *newly* joined peer.
-        createPeer(peer.socketId, true); 
+        createPeer(peer.socketId, false); 
         refreshParticipants();
       }
     );
