@@ -55,6 +55,23 @@ export function useWebRTC({
   const participantDirectory = useRef<
     Record<string, { socketId: string; displayName?: string; userId?: string }>
   >({});
+  const syncMicState = useCallback(() => {
+    const audioTracks = localStreamRef.current?.getAudioTracks() ?? [];
+    if (!audioTracks.length) {
+      setIsMicMuted(false);
+      return;
+    }
+    setIsMicMuted(audioTracks.every((track) => !track.enabled));
+  }, []);
+
+  const syncCameraState = useCallback(() => {
+    const videoTracks = localStreamRef.current?.getVideoTracks() ?? [];
+    if (!videoTracks.length) {
+      setIsCameraOff(false);
+      return;
+    }
+    setIsCameraOff(videoTracks.every((track) => !track.enabled));
+  }, []);
 
   const refreshParticipants = useCallback(() => {
     const remoteEntries = Object.values(participantDirectory.current).map(
@@ -150,7 +167,7 @@ export function useWebRTC({
       if (localStreamRef.current) {
         try {
           peer.addStream(localStreamRef.current);
-        } catch (e) {
+        } catch {
           // Stream might already be added
         }
       }
@@ -182,8 +199,8 @@ export function useWebRTC({
     audioTracks.forEach((track) => {
       track.enabled = nextEnabled;
     });
-    setIsMicMuted(!nextEnabled);
-  }, []);
+    syncMicState();
+  }, [syncMicState]);
 
   const toggleCamera = useCallback(() => {
     if (!localStreamRef.current) return;
@@ -194,8 +211,8 @@ export function useWebRTC({
     videoTracks.forEach((track) => {
       track.enabled = nextEnabled;
     });
-    setIsCameraOff(!nextEnabled);
-  }, []);
+    syncCameraState();
+  }, [syncCameraState]);
 
   const leaveSession = useCallback(() => {
     cleanupConnections(true);
@@ -219,12 +236,14 @@ export function useWebRTC({
         }
         localStreamRef.current = stream;
         setLocalStream(stream);
+        syncMicState();
+        syncCameraState();
 
         // Update any existing peers with the new stream
         Object.values(peersRef.current).forEach((peer) => {
           try {
             peer.addStream(stream);
-          } catch (e) {
+          } catch {
             // ignore
           }
         });
@@ -237,7 +256,7 @@ export function useWebRTC({
       mounted = false;
       cleanupConnections(true);
     };
-  }, [cleanupConnections]);
+  }, [cleanupConnections, syncCameraState, syncMicState]);
 
   // 2. Connect Socket only after LocalStream is ready
   useEffect(() => {

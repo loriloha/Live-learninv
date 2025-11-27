@@ -8,6 +8,7 @@ import {
   Field,
   Heading,
   Input,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -21,6 +22,7 @@ import { useProtectedRoute } from "../../hooks/useProtectedRoute";
 import { useAuth } from "../../modules/auth/AuthContext";
 import { apiFetch } from "../../lib/api-client";
 import { Lesson } from "../../types/lesson";
+import type { PublicUser } from "../../types/user";
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useProtectedRoute();
@@ -33,7 +35,10 @@ export default function DashboardPage() {
     topic: "",
     description: "",
     scheduledAt: "",
+    studentId: "",
   });
+  const [students, setStudents] = useState<PublicUser[]>([]);
+  const [requestedLessons, setRequestedLessons] = useState<Record<string, boolean>>({});
 
   const loadLessons = async () => {
     if (!token) return;
@@ -45,11 +50,22 @@ export default function DashboardPage() {
     }
   };
 
+  const loadStudents = async () => {
+    if (!token || user?.role !== "teacher") return;
+    try {
+      const data = await apiFetch<PublicUser[]>("/users?role=student", { token });
+      setStudents(data);
+    } catch {
+      setStudents([]);
+    }
+  };
+
   useEffect(() => {
     if (!authLoading && token) {
       loadLessons();
+      loadStudents();
     }
-  }, [token, authLoading]);
+  }, [token, authLoading, user?.role]);
 
   const handleCreateLesson = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,14 +79,16 @@ export default function DashboardPage() {
       await apiFetch<Lesson>("/lessons", {
         method: "POST",
         body: JSON.stringify({
-          ...form,
+          topic: form.topic,
+          description: form.description,
           scheduledAt: scheduledAtISO,
+          studentId: form.studentId || undefined,
         }),
         token,
       });
 
       toast({ title: "Lesson scheduled!", status: "success" });
-      setForm({ topic: "", description: "", scheduledAt: "" });
+      setForm({ topic: "", description: "", scheduledAt: "", studentId: "" });
       await loadLessons();
     } catch (err) {
       toast({
@@ -83,14 +101,14 @@ export default function DashboardPage() {
     }
   };
 
-  const handleJoin = async (lessonId: string) => {
+  const handleJoinRequest = async (lessonId: string) => {
     if (!token) return;
     try {
-      await apiFetch(`/lessons/${lessonId}/join`, { method: "POST", token });
-      toast({ title: "Joined lesson!", status: "success" });
-      await loadLessons();
+      await apiFetch(`/lessons/${lessonId}/requests`, { method: "POST", token });
+      toast({ title: "Request sent!", status: "success" });
+      setRequestedLessons((prev) => ({ ...prev, [lessonId]: true }));
     } catch (err) {
-      toast({ title: "Could not join", status: "error" });
+      toast({ title: "Could not send request", status: "error" });
     }
   };
 
@@ -138,6 +156,22 @@ export default function DashboardPage() {
                   placeholder="What will students learn?"
                   rows={3}
                 />
+              </Field.Root>
+
+              <Field.Root mt={4}>
+                <Field.Label>Assign Student (optional)</Field.Label>
+                <Select
+                  placeholder="Select a student"
+                  value={form.studentId}
+                  onChange={(e) => setForm({ ...form, studentId: e.target.value })}
+                  disabled={students.length === 0}
+                >
+                  {students.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.displayName} ({student.email})
+                    </option>
+                  ))}
+                </Select>
               </Field.Root>
 
               <Button
@@ -198,9 +232,12 @@ export default function DashboardPage() {
                         <Button
                           colorScheme="purple"
                           size="sm"
-                          onClick={() => handleJoin(lesson.id)}
+                          onClick={() => handleJoinRequest(lesson.id)}
+                          disabled={requestedLessons[lesson.id]}
                         >
-                          Join Lesson
+                          {requestedLessons[lesson.id]
+                            ? "Request Sent"
+                            : "Request to Join"}
                         </Button>
                       )}
 

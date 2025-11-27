@@ -14,6 +14,18 @@ export type Lesson = {
   } | null;
 };
 
+export type LessonRequest = {
+  id: string;
+  status: "pending" | "accepted" | "rejected";
+  student: {
+    id: string;
+    displayName: string;
+    email?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
 
 // Add this new type — required by useWebRTC hook and live page
 export interface ChatMessage {
