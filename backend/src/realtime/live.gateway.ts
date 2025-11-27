@@ -37,13 +37,14 @@ type PeerSummary = {
   userId?: string;
 };
 
-// --- 2. Define Event Interfaces (Fixes the "never" type errors) ---
+// --- 2. Define Event Interfaces (Formatting Fixes) ---
 
 interface ServerToClientEvents {
   'peer-left': (data: { socketId: string }) => void;
   'existing-peers': (data: PeerSummary[]) => void;
   'peer-joined': (data: PeerSummary) => void;
-  'signal': (data: { from: string; signal: unknown }) => void;
+  // Prettier Fix: 'signal' -> signal
+  signal: (data: { from: string; signal: unknown }) => void;
   'chat-message': (data: {
     message: string;
     senderName: string;
@@ -55,7 +56,8 @@ interface ServerToClientEvents {
 
 interface ClientToServerEvents {
   'join-room': (payload: JoinPayload) => void;
-  'signal': (payload: SignalPayload) => void;
+  // Prettier Fix: 'signal' -> signal
+  signal: (payload: SignalPayload) => void;
   'chat-message': (payload: ChatPayload) => void;
   'end-session': () => void;
 }
@@ -69,7 +71,6 @@ interface SocketData {
 
 // --- 3. Create Typed Aliases ---
 
-// This maps the events to the socket, so TS knows 'peer-left' is a valid event.
 type LiveSocket = Socket<
   ClientToServerEvents,
   ServerToClientEvents,
@@ -93,7 +94,7 @@ type LiveNamespace = Namespace<
 })
 export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: LiveNamespace; // Use the typed Namespace
+  server: LiveNamespace;
 
   private readonly logger = new Logger(LiveGateway.name);
 
@@ -106,7 +107,6 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(client: LiveSocket) {
     this.logger.log(`Client disconnected ${client.id}`);
     if (client.data.lessonId) {
-      // TS now knows 'peer-left' exists on ServerToClientEvents
       client.to(client.data.lessonId).emit('peer-left', {
         socketId: client.id,
       });
@@ -125,18 +125,19 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const room = this.server.adapter.rooms.get(payload.lessonId);
 
       if (room && room.size > 0) {
-        existingPeers = Array.from(room).map((socketId) => {
-          // Fixes Prettier/Length error by breaking line safely
-          const socket = this.server.sockets.get(socketId) as
-            | LiveSocket
-            | undefined;
+        existingPeers = Array.from(room)
+          .filter((id) => id !== client.id)
+          .map((socketId) => {
+            const socket = this.server.sockets.get(socketId) as
+              | LiveSocket
+              | undefined;
 
-          return {
-            socketId,
-            displayName: socket?.data?.displayName,
-            userId: socket?.data?.userId,
-          };
-        });
+            return {
+              socketId,
+              displayName: socket?.data?.displayName || 'Participant',
+              userId: socket?.data?.userId || 'unknown',
+            };
+          });
       }
     } catch (err) {
       this.logger.warn(

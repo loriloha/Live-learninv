@@ -13,8 +13,7 @@ import {
   Input,
   Icon,
   IconProps,
-  SimpleGrid, // Kept in case you need it later, but unused now
-  Stack,
+  Stack, // SimpleGrid removed as it was unused
   Text,
 } from "@chakra-ui/react";
 import { useParams, useRouter } from "next/navigation";
@@ -148,7 +147,6 @@ export default function LiveLessonPage() {
   }
 
   const waitingFor = user.role === "teacher" ? "a student" : "the teacher";
-  const hasOtherParticipants = participants.some((p) => !p.isLocal);
   const canSendMessage = Boolean(message.trim()) && !sessionEndedBy;
 
   return (
@@ -183,7 +181,7 @@ export default function LiveLessonPage() {
 
         <Flex gap={6} direction={{ base: "column", xl: "row" }} align="stretch">
           
-          {/* Main Video Area - Updated Layout */}
+          {/* Main Video Area */}
           <Box flex="3" bg="blackAlpha.600" rounded="3xl" overflow="hidden" boxShadow="2xl">
             
             {/* STAGE: This is the large video (Remote User) */}
@@ -201,7 +199,6 @@ export default function LiveLessonPage() {
               )}
 
               {/* PIP (Picture in Picture): Local User */}
-              {/* Nested INSIDE the stage so it doesn't overlap controls */}
               {localStream ? (
                 <Box 
                   position="absolute" 
@@ -221,8 +218,10 @@ export default function LiveLessonPage() {
                     key="local"
                     stream={localStream}
                     label="You"
-                    muted
+                    muted // Stops audio feedback locally
                     isLocal
+                    isMuted={isMicMuted} // Correct prop for UI status
+                    isCameraOff={isCameraOff} // Correct prop for UI status
                   />
                 </Box>
               ) : (
@@ -240,7 +239,7 @@ export default function LiveLessonPage() {
                       {participants.map((p) => (
                         <Avatar.Root key={p.id}>
                           <Avatar.Fallback bg={p.isLocal ? "purple.500" : "gray.600"} color="white">
-                            {p.displayName[0]}
+                            {p.displayName?.[0] || "?"}
                           </Avatar.Fallback>
                         </Avatar.Root>
                       ))}
@@ -275,7 +274,7 @@ export default function LiveLessonPage() {
             </Box>
           </Box>
 
-          {/* Chat / Participants Panel (Restored) */}
+          {/* Chat / Participants Panel */}
           <Card.Root flex="1" maxH="80vh" display={panelOpen ? "flex" : "none"} flexDirection="column" boxShadow="2xl">
             <Card.Header bg="purple.600" color="white" justifyContent="space-between" alignItems="center">
               <Heading size="sm">{panelView === "chat" ? "Live chat" : "Participants"}</Heading>
@@ -304,9 +303,7 @@ export default function LiveLessonPage() {
                               <Box
                                 bg={isSelf ? "purple.500" : "white"}
                                 color={isSelf ? "white" : "gray.800"}
-                                px={4}
-                                py={3}
-                                rounded="2xl"
+                                px={4} py={3} rounded="2xl"
                                 roundedTopLeft={isSelf ? "2xl" : "md"}
                                 roundedTopRight={isSelf ? "md" : "2xl"}
                                 boxShadow="md"
@@ -326,20 +323,13 @@ export default function LiveLessonPage() {
                     </Stack>
                   </Box>
 
-                  <Box
-                    as="form"
-                    onSubmit={(e: React.FormEvent) => {
+                  <Box as="form" onSubmit={(e: React.FormEvent) => {
                       e.preventDefault();
                       if (!canSendMessage) return;
                       sendMessage(message);
                       setMessage("");
                     }}
-                    p={4}
-                    bg="white"
-                    borderTop="1px solid"
-                    borderColor="gray.200"
-                    display="flex"
-                    gap={3}
+                    p={4} bg="white" borderTop="1px solid" borderColor="gray.200" display="flex" gap={3}
                   >
                     <Input
                       value={message}
