@@ -9,13 +9,14 @@ import {
 } from '@nestjs/websockets';
 import { LessonsService } from '../lessons/lessons.service';
 import { Logger } from '@nestjs/common';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
+
+// --- 1. Define Payloads ---
 
 type SignalPayload = {
   targetSocketId?: string;
   signal: unknown;
 };
-
 
 type ChatPayload = {
   message: string;
@@ -36,6 +37,53 @@ type PeerSummary = {
   userId?: string;
 };
 
+// --- 2. Define Event Interfaces (Fixes the "never" type errors) ---
+
+interface ServerToClientEvents {
+  'peer-left': (data: { socketId: string }) => void;
+  'existing-peers': (data: PeerSummary[]) => void;
+  'peer-joined': (data: PeerSummary) => void;
+  'signal': (data: { from: string; signal: unknown }) => void;
+  'chat-message': (data: {
+    message: string;
+    senderName: string;
+    senderId: string;
+    sentAt: string;
+  }) => void;
+  'session-ended': (data: { endedBy: string }) => void;
+}
+
+interface ClientToServerEvents {
+  'join-room': (payload: JoinPayload) => void;
+  'signal': (payload: SignalPayload) => void;
+  'chat-message': (payload: ChatPayload) => void;
+  'end-session': () => void;
+}
+
+interface SocketData {
+  lessonId?: string;
+  userId?: string;
+  displayName?: string;
+  role?: 'teacher' | 'student';
+}
+
+// --- 3. Create Typed Aliases ---
+
+// This maps the events to the socket, so TS knows 'peer-left' is a valid event.
+type LiveSocket = Socket<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  any, // ServerSideEvents (safe to leave as any)
+  SocketData
+>;
+
+type LiveNamespace = Namespace<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  any,
+  SocketData
+>;
+
 @WebSocketGateway({
   cors: {
     origin: process.env.FRONTEND_ORIGIN?.split(',') ?? '*',
@@ -45,41 +93,44 @@ type PeerSummary = {
 })
 export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server; // Note: At runtime, this is actually a Namespace instance
+  server: LiveNamespace; // Use the typed Namespace
 
   private readonly logger = new Logger(LiveGateway.name);
 
   constructor(private readonly lessonsService: LessonsService) {}
 
-  async handleConnection(client: Socket) {
+  handleConnection(client: LiveSocket) {
     this.logger.log(`Client connected ${client.id}`);
   }
 
-  async handleDisconnect(client: Socket) {
+  handleDisconnect(client: LiveSocket) {
     this.logger.log(`Client disconnected ${client.id}`);
     if (client.data.lessonId) {
+      // TS now knows 'peer-left' exists on ServerToClientEvents
       client.to(client.data.lessonId).emit('peer-left', {
         socketId: client.id,
       });
     }
   }
+
   @SubscribeMessage('join-room')
   async handleJoinRoom(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: LiveSocket,
     @MessageBody() payload: JoinPayload,
   ) {
     await this.lessonsService.findById(payload.lessonId);
-    // In a namespaced gateway, `this.server` is already the Namespace.
-    // Use its adapter and sockets safely, and fall back to an empty list if unavailable.
+
     let existingPeers: PeerSummary[] = [];
     try {
-      const nsp: any = this.server as any;
-      const adapter = nsp.adapter;
-      const room: Set<string> | undefined = adapter?.rooms?.get(payload.lessonId);
+      const room = this.server.adapter.rooms.get(payload.lessonId);
 
       if (room && room.size > 0) {
         existingPeers = Array.from(room).map((socketId) => {
-          const socket: any = nsp.sockets?.get(socketId) ?? null;
+          // Fixes Prettier/Length error by breaking line safely
+          const socket = this.server.sockets.get(socketId) as
+            | LiveSocket
+            | undefined;
+
           return {
             socketId,
             displayName: socket?.data?.displayName,
@@ -100,7 +151,9 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.data.displayName = payload.displayName;
     client.data.userId = payload.userId;
     client.data.role = payload.role;
-    client.join(payload.lessonId);
+
+    await client.join(payload.lessonId);
+
     client.emit('existing-peers', existingPeers);
     client.to(payload.lessonId).emit('peer-joined', {
       socketId: client.id,
@@ -112,7 +165,7 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('signal')
   handleSignal(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: LiveSocket,
     @MessageBody() payload: SignalPayload,
   ) {
     if (!client.data.lessonId) {
@@ -123,9 +176,7 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
       signal: payload.signal,
     };
     if (payload.targetSocketId) {
-      // FIX: Use `this.server.sockets.get` instead of `this.server.sockets.sockets.get`
-      // When using a namespace, `this.server.sockets` is the Map of sockets.
-      const target = this.server.sockets.get(payload.targetSocketId); 
+      const target = this.server.sockets.get(payload.targetSocketId);
       target?.emit('signal', body);
       return;
     }
@@ -134,7 +185,7 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('chat-message')
   handleChat(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: LiveSocket,
     @MessageBody() payload: ChatPayload,
   ) {
     if (!client.data.lessonId) {
@@ -142,15 +193,14 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     this.server.in(client.data.lessonId).emit('chat-message', {
       message: payload.message,
-      senderName: payload.senderName ?? client.data.displayName,
-      senderId:
-        payload.senderId ?? client.data.userId ?? client.id,
+      senderName: payload.senderName ?? client.data.displayName ?? 'Unknown',
+      senderId: payload.senderId ?? client.data.userId ?? client.id,
       sentAt: new Date().toISOString(),
     });
   }
 
   @SubscribeMessage('end-session')
-  async endSession(@ConnectedSocket() client: Socket) {
+  async endSession(@ConnectedSocket() client: LiveSocket) {
     if (!client.data.lessonId || !client.data.userId) {
       return;
     }
