@@ -269,6 +269,10 @@ export function useWebRTC({
       "peer-joined",
       (peer: { socketId: string; displayName?: string; userId?: string }) => {
         participantDirectory.current[peer.socketId] = peer;
+        // Create a peer connection for the newly joined peer
+        // We are NOT the initiator because the new peer will create their own peer connection
+        // and send signals to us. We just need to be ready to receive and respond.
+        createPeer(peer.socketId, false);
         refreshParticipants();
       }
     );
