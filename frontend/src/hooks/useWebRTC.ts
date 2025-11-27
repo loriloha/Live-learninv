@@ -232,7 +232,7 @@ export function useWebRTC({
 
   // Main socket connection (independent of camera/mic so chat & presence always work)
   useEffect(() => {
-    if (!lessonId || !userId) return;
+    if (!lessonId || !userId || !localStream) return;
 
     const socket = io(`${API_BASE}/live`, {
       transports: ["websocket"],
@@ -307,6 +307,7 @@ export function useWebRTC({
     displayName,
     userId,
     role,
+    localStream,
     createPeer,
     removePeer,
     refreshParticipants,

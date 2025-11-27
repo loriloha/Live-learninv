@@ -13,10 +13,9 @@ import {
   Input,
   Icon,
   IconProps,
-  SimpleGrid,
+  SimpleGrid, // Kept in case you need it later, but unused now
   Stack,
   Text,
-  // Removed useToast as it is not available in v3
 } from "@chakra-ui/react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -28,8 +27,7 @@ import { Lesson } from "../../../../types/lesson";
 import { VideoTile } from "../../../../components/VideoTile";
 import { useWebRTC } from "../../../../hooks/useWebRTC";
 
-// Custom Icons with proper Types
-
+// --- Icons ---
 const MicIcon = (props: IconProps) => (
   <Icon viewBox="0 0 24 24" {...props}>
     <path
@@ -56,15 +54,15 @@ const EndCallIcon = (props: IconProps) => (
     />
   </Icon>
 );
+
 type PanelView = "chat" | "participants";
 
 export default function LiveLessonPage() {
   const params = useParams<{ lessonId: string }>();
   const router = useRouter();
-  // removed useToast
   const { user } = useProtectedRoute();
   const { token } = useAuth();
-
+  
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [message, setMessage] = useState("");
   const [panelView, setPanelView] = useState<PanelView>("chat");
@@ -90,6 +88,9 @@ export default function LiveLessonPage() {
     userId: user?.id ?? "unknown",
     role: user?.role ?? "student",
   });
+
+  // Identify the main remote participant (Teacher or Student)
+  const primaryRemoteStream = remoteStreams[0];
 
   useEffect(() => {
     if (!token || !params.lessonId) return;
@@ -125,11 +126,9 @@ export default function LiveLessonPage() {
       setLesson(updated);
       notifySessionEnd();
       leaveSession();
-      // Toast removed, relying on redirect
       router.push("/dashboard");
     } catch (err) {
       console.error("Failed to end session:", err);
-      // Optional: Add a local error state here if you want to show it in the UI
     } finally {
       setEndingSession(false);
     }
@@ -139,50 +138,6 @@ export default function LiveLessonPage() {
     if (!lesson) return "";
     return dayjs(lesson.scheduledAt).format("dddd, MMMM D, YYYY [at] h:mm A");
   }, [lesson]);
-
-  const videoTiles = useMemo(() => {
-    const tiles: React.ReactNode[] = [];
-
-    if (localStream && user) {
-      tiles.push(
-        <VideoTile
-          key="local"
-          stream={localStream}
-          label={`${user.displayName} (You)`}
-          muted
-          isLocal
-        />
-      );
-    } else {
-      tiles.push(
-        <Box
-          key="local-placeholder"
-          bg="blackAlpha.600"
-          rounded="2xl"
-          minH="260px"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          color="whiteAlpha.800"
-          fontWeight="semibold"
-        >
-          Allow camera & microphone access to join the call
-        </Box>
-      );
-    }
-
-    remoteStreams.forEach((peer) => {
-      tiles.push(
-        <VideoTile
-          key={peer.socketId}
-          stream={peer.stream}
-          label={peer.displayName ?? "Participant"}
-        />
-      );
-    });
-
-    return tiles;
-  }, [localStream, remoteStreams, user]);
 
   if (!lesson || !user) {
     return (
@@ -194,7 +149,6 @@ export default function LiveLessonPage() {
 
   const waitingFor = user.role === "teacher" ? "a student" : "the teacher";
   const hasOtherParticipants = participants.some((p) => !p.isLocal);
-  const showWaitingState = !hasOtherParticipants;
   const canSendMessage = Boolean(message.trim()) && !sessionEndedBy;
 
   return (
@@ -216,7 +170,7 @@ export default function LiveLessonPage() {
           </Stack>
         </Flex>
 
-        {/* Session Ended Alert - Updated structure for v3 */}
+        {/* Session Ended Alert */}
         {sessionEndedBy && (
           <Alert.Root status="warning" borderRadius="lg">
             <Alert.Indicator />
@@ -228,89 +182,100 @@ export default function LiveLessonPage() {
         )}
 
         <Flex gap={6} direction={{ base: "column", xl: "row" }} align="stretch">
-          {/* Main Video Area */}
-          <Box flex="3" bg="blackAlpha.600" rounded="3xl" p={6} boxShadow="2xl" backdropFilter="blur(12px)">
-            <Stack gap={6}>
-              <Stack gap={4} minH="520px">
-                <SimpleGrid columns={{ base: 1, lg: videoTiles.length > 1 ? 2 : 1 }} gap={4}>
-                  {videoTiles}
-                </SimpleGrid>
+          
+          {/* Main Video Area - Updated Layout */}
+          <Box flex="3" bg="blackAlpha.600" rounded="3xl" overflow="hidden" boxShadow="2xl">
+            
+            {/* STAGE: This is the large video (Remote User) */}
+            <Box w="100%" h="600px" position="relative" bg="black">
+              {primaryRemoteStream ? (
+                 <VideoTile
+                   key={primaryRemoteStream.socketId}
+                   stream={primaryRemoteStream.stream}
+                   label={primaryRemoteStream.displayName ?? "Participant"}
+                 />
+              ) : (
+                <Flex align="center" justify="center" h="100%" direction="column" color="whiteAlpha.600">
+                  <Text fontSize="xl">Waiting for {waitingFor} to join...</Text>
+                </Flex>
+              )}
 
-                {showWaitingState && (
-                  <Box
-                    bg="blackAlpha.500"
-                    border="1px dashed"
-                    borderColor="whiteAlpha.400"
-                    rounded="2xl"
-                    p={10}
-                    textAlign="center"
-                    color="whiteAlpha.700"
-                  >
-                    Waiting for {waitingFor} to connect...
-                  </Box>
-                )}
-              </Stack>
+              {/* PIP (Picture in Picture): Local User */}
+              {/* Nested INSIDE the stage so it doesn't overlap controls */}
+              {localStream ? (
+                <Box 
+                  position="absolute" 
+                  bottom={4} 
+                  right={4} 
+                  w="280px" 
+                  h="180px" 
+                  rounded="xl" 
+                  overflow="hidden" 
+                  boxShadow="2xl"
+                  border="2px solid"
+                  borderColor="whiteAlpha.200"
+                  zIndex={10}
+                  bg="gray.900"
+                >
+                  <VideoTile
+                    key="local"
+                    stream={localStream}
+                    label="You"
+                    muted
+                    isLocal
+                  />
+                </Box>
+              ) : (
+                 <Box position="absolute" bottom={4} right={4} w="280px" h="180px" bg="gray.800" rounded="xl" p={4}>
+                   <Text color="white" fontSize="sm">Loading camera...</Text>
+                 </Box>
+              )}
+            </Box>
 
-              {/* Controls */}
-              <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
-                <Stack direction="row" align="center" gap={3}>
-                  {/* Updated AvatarGroup */}
-                  <AvatarGroup size="sm">
-                    {participants.map((p) => (
-                      <Avatar.Root key={p.id}>
-                        <Avatar.Fallback bg={p.isLocal ? "purple.500" : "gray.600"} color="white">
-                          {p.displayName[0]}
-                        </Avatar.Fallback>
-                      </Avatar.Root>
-                    ))}
-                  </AvatarGroup>
-                  <Text color="whiteAlpha.800">{participants.length} in call</Text>
-                </Stack>
+            {/* Controls Overlay */}
+            <Box p={4} bg="blackAlpha.400" backdropFilter="blur(10px)">
+               <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
+                  <Stack direction="row" align="center" gap={3}>
+                    <AvatarGroup size="sm">
+                      {participants.map((p) => (
+                        <Avatar.Root key={p.id}>
+                          <Avatar.Fallback bg={p.isLocal ? "purple.500" : "gray.600"} color="white">
+                            {p.displayName[0]}
+                          </Avatar.Fallback>
+                        </Avatar.Root>
+                      ))}
+                    </AvatarGroup>
+                    <Text color="whiteAlpha.800">{participants.length} in call</Text>
+                  </Stack>
 
-                <Stack direction={{ base: "column", sm: "row" }} gap={3}>
-                  <Button
-                    rounded="full"
-                    bg={isMicMuted ? "red.500" : "white"}
-                    color={isMicMuted ? "white" : "gray.800"}
-                    onClick={toggleMic}
-                  >
-                    <MicIcon /> {isMicMuted ? "Unmute" : "Mute"}
-                  </Button>
-
-                  <Button
-                    rounded="full"
-                    bg={isCameraOff ? "red.500" : "white"}
-                    color={isCameraOff ? "white" : "gray.800"}
-                    onClick={toggleCamera}
-                  >
-                     <CameraIcon /> {isCameraOff ? "Camera on" : "Camera off"}
-                  </Button>
-
-                  <Button rounded="full" variant="outline" colorScheme="whiteAlpha" onClick={() => setPanelOpen(v => !v)}>
-                    {panelOpen ? "Hide panel" : "Show panel"}
-                  </Button>
-
-                  <Button rounded="full" colorScheme="red" onClick={handleLeave}>
-                    <EndCallIcon /> Leave
-                  </Button>
-
-                  {user.id === lesson.teacher.id && (
-                    <Button
-                      rounded="full"
-                      colorScheme="pink"
-                      onClick={handleEndSession}
-                      loading={endingSession}
-                      loadingText="Ending..."
-                    >
-                      End for everyone
-                    </Button>
-                  )}
-                </Stack>
-              </Flex>
-            </Stack>
+                  <Stack direction={{ base: "column", sm: "row" }} gap={3}>
+                      <Button rounded="full" bg={isMicMuted ? "red.500" : "white"} color={isMicMuted ? "white" : "gray.800"} onClick={toggleMic}>
+                         <MicIcon /> {isMicMuted ? "Unmute" : "Mute"}
+                      </Button>
+                      
+                      <Button rounded="full" bg={isCameraOff ? "red.500" : "white"} color={isCameraOff ? "white" : "gray.800"} onClick={toggleCamera}>
+                         <CameraIcon /> {isCameraOff ? "Camera on" : "Camera off"}
+                      </Button>
+                      
+                      <Button rounded="full" variant="outline" colorScheme="whiteAlpha" onClick={() => setPanelOpen(v => !v)}>
+                         {panelOpen ? "Hide panel" : "Show panel"}
+                      </Button>
+                      
+                      <Button rounded="full" colorScheme="red" onClick={handleLeave}>
+                         <EndCallIcon /> Leave
+                      </Button>
+                      
+                      {user.id === lesson.teacher.id && (
+                        <Button rounded="full" colorScheme="pink" onClick={handleEndSession} loading={endingSession}>
+                          End for everyone
+                        </Button>
+                      )}
+                  </Stack>
+               </Flex>
+            </Box>
           </Box>
 
-          {/* Chat / Participants Panel */}
+          {/* Chat / Participants Panel (Restored) */}
           <Card.Root flex="1" maxH="80vh" display={panelOpen ? "flex" : "none"} flexDirection="column" boxShadow="2xl">
             <Card.Header bg="purple.600" color="white" justifyContent="space-between" alignItems="center">
               <Heading size="sm">{panelView === "chat" ? "Live chat" : "Participants"}</Heading>
@@ -402,6 +367,7 @@ export default function LiveLessonPage() {
               )}
             </Card.Body>
           </Card.Root>
+
         </Flex>
       </Stack>
     </Box>
