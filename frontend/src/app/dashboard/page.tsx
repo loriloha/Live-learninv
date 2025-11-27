@@ -8,15 +8,15 @@ import {
   Field,
   Heading,
   Input,
-  Select,
+  // Select as ChakraSelect, // <-- Removed the problematic import
   SimpleGrid,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useToast } from "@chakra-ui/toast"; // Correct import in v3
+import { useToast } from "@chakra-ui/toast";
 import dayjs from "dayjs";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import NextLink from "next/link";
 import { useProtectedRoute } from "../../hooks/useProtectedRoute";
 import { useAuth } from "../../modules/auth/AuthContext";
@@ -38,19 +38,21 @@ export default function DashboardPage() {
     studentId: "",
   });
   const [students, setStudents] = useState<PublicUser[]>([]);
-  const [requestedLessons, setRequestedLessons] = useState<Record<string, boolean>>({});
+  const [requestedLessons, setRequestedLessons] = useState<
+    Record<string, boolean>
+  >({});
 
-  const loadLessons = async () => {
+  const loadLessons = useCallback(async () => {
     if (!token) return;
     try {
       const data = await apiFetch<Lesson[]>("/lessons", { token });
       setLessons(data);
-    } catch (err) {
+    } catch (_) { // Cleaned up unused variable
       toast({ title: "Failed to load lessons", status: "error" });
     }
-  };
+  }, [token, toast]);
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     if (!token || user?.role !== "teacher") return;
     try {
       const data = await apiFetch<PublicUser[]>("/users?role=student", { token });
@@ -58,14 +60,14 @@ export default function DashboardPage() {
     } catch {
       setStudents([]);
     }
-  };
+  }, [token, user?.role]);
 
   useEffect(() => {
     if (!authLoading && token) {
       loadLessons();
       loadStudents();
     }
-  }, [token, authLoading, user?.role]);
+  }, [token, authLoading, user?.role, loadLessons, loadStudents]);
 
   const handleCreateLesson = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,10 +92,10 @@ export default function DashboardPage() {
       toast({ title: "Lesson scheduled!", status: "success" });
       setForm({ topic: "", description: "", scheduledAt: "", studentId: "" });
       await loadLessons();
-    } catch (err) {
+    } catch (_err) { // Cleaned up unused variable
       toast({
         title: "Failed to create lesson",
-        description: (err as Error).message,
+        description: (_err as Error).message,
         status: "error",
       });
     } finally {
@@ -107,7 +109,7 @@ export default function DashboardPage() {
       await apiFetch(`/lessons/${lessonId}/requests`, { method: "POST", token });
       toast({ title: "Request sent!", status: "success" });
       setRequestedLessons((prev) => ({ ...prev, [lessonId]: true }));
-    } catch (err) {
+    } catch { // Cleaned up unused variable (removed 'err')
       toast({ title: "Could not send request", status: "error" });
     }
   };
@@ -159,19 +161,37 @@ export default function DashboardPage() {
               </Field.Root>
 
               <Field.Root mt={4}>
-                <Field.Label>Assign Student (optional)</Field.Label>
-                <Select
-                  placeholder="Select a student"
+                <Field.Label htmlFor="studentId">Assign Student (optional)</Field.Label>
+                {/* FIX: Using native <select> instead of problematic ChakraSelect */}
+                <select
+                  id="studentId"
+                  // Basic inline styling to mimic Chakra UI Input/Select
+                  style={{
+                    width: '100%', 
+                    padding: '8px 12px', 
+                    borderRadius: 'var(--chakra-radii-md)', 
+                    border: '1px solid var(--chakra-colors-gray-200)',
+                    appearance: 'none', 
+                    backgroundColor: 'var(--chakra-colors-white)',
+                    height: 'var(--chakra-sizes-10)',
+                  }}
                   value={form.studentId}
-                  onChange={(e) => setForm({ ...form, studentId: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => 
+                    setForm({ ...form, studentId: e.target.value })
+                  }
                   disabled={students.length === 0}
                 >
+                  <option value="" disabled hidden>Select a student</option>
                   {students.map((student) => (
                     <option key={student.id} value={student.id}>
                       {student.displayName} ({student.email})
                     </option>
                   ))}
-                </Select>
+                </select>
+                {/* Optional visual cue placeholder: */}
+                {/* <Box as="span" pos="relative" pointerEvents="none" right="10px" top="-30px" zIndex="1" color="gray.500">
+                    ▼
+                </Box> */}
               </Field.Root>
 
               <Button

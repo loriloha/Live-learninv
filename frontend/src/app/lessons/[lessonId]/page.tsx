@@ -6,9 +6,10 @@ import {
   Button,
   Card,
   Heading,
-  Select,
+  // Select, // <-- REMOVED: Causing JSX component error
   Stack,
   Text,
+  Field, // <-- Added Field for the select input
 } from "@chakra-ui/react";
 import { useToast } from "@chakra-ui/toast";
 import { useParams, useRouter } from "next/navigation";
@@ -39,6 +40,9 @@ export default function LessonDetailsPage() {
   } | null>(null);
   const [myRequest, setMyRequest] = useState<LessonRequest | null>(null);
   const [requesting, setRequesting] = useState(false);
+  // FIX 1: Added missing 'joining' state
+  const [joining, setJoining] = useState(false);
+  
   const pendingRequests = useMemo(
     () => requests.filter((req) => req.status === "pending"),
     [requests]
@@ -198,7 +202,7 @@ export default function LessonDetailsPage() {
   const handleJoin = async () => {
     if (!token || !params.lessonId || lesson?.student) return;
 
-    setJoining(true);
+    setJoining(true); // FIX 1: setJoining now exists
     try {
       const updated = await apiFetch<Lesson>(`/lessons/${params.lessonId}/join`, {
         method: "POST",
@@ -206,10 +210,10 @@ export default function LessonDetailsPage() {
       });
       setLesson(updated);
       toast({ title: "Successfully joined!", status: "success" });
-    } catch (err) {
+    } catch { // FIX: Removed unused 'err' parameter
       toast({ title: "Failed to join", status: "error" });
     } finally {
-      setJoining(false);
+      setJoining(false); // FIX 1: setJoining now exists
     }
   };
 
@@ -306,18 +310,33 @@ export default function LessonDetailsPage() {
             <Card.Body>
               <Stack gap={4}>
                 <Heading size="md">Assign a Student</Heading>
-                <Select
-                  placeholder="Select a student"
-                  value={assignmentStudentId}
-                  onChange={(e) => setAssignmentStudentId(e.target.value)}
-                >
-                  <option value="">No student selected</option>
-                  {students.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.displayName} ({student.email})
-                    </option>
-                  ))}
-                </Select>
+                <Field.Root>
+                  <Field.Label htmlFor="assignmentStudentId">Assign a Student</Field.Label>
+                  {/* FIX: Used native <select> instead of problematic Chakra Select */}
+                  <select
+                    id="assignmentStudentId"
+                    style={{
+                      width: '100%', 
+                      padding: '8px 12px', 
+                      borderRadius: 'var(--chakra-radii-md)', 
+                      border: '1px solid var(--chakra-colors-gray-200)',
+                      appearance: 'none', 
+                      backgroundColor: 'var(--chakra-colors-white)',
+                      height: 'var(--chakra-sizes-10)',
+                    }}
+                    value={assignmentStudentId}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => // FIX: Explicitly typed 'e'
+                      setAssignmentStudentId(e.target.value)
+                    }
+                  >
+                    <option value="">No student selected</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.displayName} ({student.email})
+                      </option>
+                    ))}
+                  </select>
+                </Field.Root>
                 <Stack direction={{ base: "column", sm: "row" }} gap={3}>
                   <Button
                     colorScheme="purple"
@@ -364,7 +383,7 @@ export default function LessonDetailsPage() {
                       flexDirection={{ base: "column", md: "row" }}
                       gap={3}
                     >
-                      <Stack spacing={1}>
+                      <Stack gap={1}>
                         <Text fontWeight="bold">{request.student.displayName}</Text>
                         <Text fontSize="sm" color="gray.500">
                           Requested {dayjs(request.createdAt).format("MMM D, YYYY h:mm A")}
